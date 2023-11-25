@@ -1,0 +1,11 @@
+pandas
+plotly
+streamlit
+openpyxl
+streamlit_option_menu
+newsapi_python==0.2.7
+requests
+beautifulsoup4
+geopy
+pycountry
+lxml
