@@ -104,15 +104,7 @@ if file_upload is not None:
                           value=f"{format_kpi_value(inventory_sold)}",
                           delta=f"{percentage_change_is:.1f}%")
 
-        kpi_row[2].metric(label="Inventory Undergoing Repairs",
-                          value=f"{format_kpi_value(inv_under_repair)}",
-                          delta=f"{percentage_change_ur:.1f}%")
-
-        kpi_row[3].metric(label="Inventory Picked Up",
-                          value=f"{inv_picked} items",
-                          delta=f"{percentage_change_ip:.1f}%")
-
-        kpi_row[4].metric(label="Gate In",  # Aging of Inventory (Gate In to Today)
+        kpi_row[3].metric(label="Gate In",  # Aging of Inventory (Gate In to Today)
                           value=f"{gatein_aging:.1f} days",
                           delta=f"{percentage_change_gia:.1f}%")
         try:
