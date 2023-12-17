@@ -103,7 +103,8 @@ if file_upload is not None:
         kpi_row[1].metric(label="Inventory Sold",
                           value=f"{format_kpi_value(inventory_sold)}",
                           delta=f"{percentage_change_is:.1f}%")
-          kpi_row[2].metric(label="Inventory Undergoing Repairs",
+        
+        kpi_row[2].metric(label="Inventory Undergoing Repairs",
                           value=f"{format_kpi_value(inv_under_repair)}",
                           delta=f"{percentage_change_ur:.1f}%")
 
