@@ -89,8 +89,8 @@ if file_upload is not None:
         # -------------------------- KPIs calculation ----------------------------------
         cost_of_inventory, percentage_change_coi = get_coi(filtered_df, filtered_df_prev)
         inventory_sold, percentage_change_is = get_inv_sold(filtered_df, filtered_df_prev)
-       # inv_under_repair, percentage_change_ur = get_inv_under_repair(filtered_df, filtered_df_prev)
-       # inv_picked, percentage_change_ip = get_inv_picked(filtered_df, filtered_df_prev)
+        inv_under_repair, percentage_change_ur = get_inv_under_repair(filtered_df, filtered_df_prev)
+        inv_picked, percentage_change_ip = get_inv_picked(filtered_df, filtered_df_prev)
         gatein_aging, percentage_change_gia = get_gatein_aging(filtered_df, filtered_df_prev)
         dwell_time, percentage_change_dt = get_dwell_time(filtered_df, filtered_df_prev)
 
@@ -104,13 +104,13 @@ if file_upload is not None:
                           value=f"{format_kpi_value(inventory_sold)}",
                           delta=f"{percentage_change_is:.1f}%")
         
-       # kpi_row[2].metric(label="Inventory Undergoing Repairs",
-       #                   value=f"{format_kpi_value(inv_under_repair)}",
-       #                   delta=f"{percentage_change_ur:.1f}%")
+        kpi_row[2].metric(label="Inventory Undergoing Repairs",
+                          value=f"{format_kpi_value(inv_under_repair)}",
+                          delta=f"{percentage_change_ur:.1f}%")
 
-       # kpi_row[3].metric(label="Inventory Picked Up",
-       #                   value=f"{inv_picked} items",
-       #                  delta=f"{percentage_change_ip:.1f}%")
+        kpi_row[3].metric(label="Inventory Picked Up",
+                           value=f"{inv_picked} items",
+                           delta=f"{percentage_change_ip:.1f}%")
 
         kpi_row[4].metric(label="Gate In",  # Aging of Inventory (Gate In to Today)
                           value=f"{gatein_aging:.1f} days",
