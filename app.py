@@ -9,11 +9,22 @@ from streamlit_option_menu import option_menu
 import requests
 from scraper.scrape import scrap_data, get_countries_codes
 
+# Set Streamlit page configuration
+st.set_page_config(page_title="Inventory Insights", page_icon="📊", layout="wide")
+
+# Create a connection object.
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Specify your Google Sheets URL and Worksheet Name or ID
+spreadsheet_url = "https://docs.google.com/spreadsheets/d/1mCVwxzlEY7JtBcSocoecV7JDZYOOW1wk4jE2GgzJtGc/edit#gid=771355186"
+worksheet_name_or_id = "771355186"
+
+# Read data directly from Google Sheets
+data = conn.read(spreadsheet=spreadsheet_url, worksheet=worksheet_name_or_id)
+
 
 API_KEY = st.secrets.news_api_key["key"]
 API_ENDPOINT = "https://api.newsfilter.io/search?token={}".format(API_KEY)
-
-st.set_page_config(page_title="Inventory Insights", page_icon="📊", layout="wide")
 
 # ---------------------------------- Page Styling -------------------------------------
 
