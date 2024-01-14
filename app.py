@@ -23,6 +23,9 @@ worksheet_name_or_id = "771355186"
 # Read data directly from Google Sheets
 data = conn.read(spreadsheet=spreadsheet_url, worksheet=worksheet_name_or_id)
 
+# Display the data
+st.dataframe(data)
+
 
 # ---------------------------------- Page Styling -------------------------------------
 
