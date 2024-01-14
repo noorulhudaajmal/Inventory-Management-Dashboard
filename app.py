@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import plotly.graph_objects as go
 import plotly.express as px
 from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
