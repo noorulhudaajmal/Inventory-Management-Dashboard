@@ -1,6 +1,7 @@
 pandas
 plotly
 streamlit
+streamlit_gsheet
 gspread
 openpyxl
 streamlit_option_menu
