@@ -1,7 +1,7 @@
 pandas
 plotly
 streamlit
-gsheets-connection
+gspread
 openpyxl
 streamlit_option_menu
 newsapi_python==0.2.7
