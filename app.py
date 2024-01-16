@@ -50,10 +50,10 @@ if file_upload is None:
 
 else:
     if file_upload.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-        df = pd.read_excel(file_upload, engine="openpyxl")
+        df = pd.read_excel(file_upload, engine="openpyxl", sheet_name="Data_Sheet")
         df0 = pd.read_excel(file_upload, sheet_name="Container X")
     elif file_upload.type == "application/vnd.ms-excel":  # Check if it's an XLS file
-        df = pd.read_excel(file_upload)
+        df = pd.read_excel(file_upload, sheet_name="Data_Sheet")
         df0 = pd.read_excel(file_upload, sheet_name="Container X")
     elif file_upload.type == "text/csv":  # Check if it's a CSV file
         df = pd.read_csv(file_upload, encoding=("UTF-8"))
