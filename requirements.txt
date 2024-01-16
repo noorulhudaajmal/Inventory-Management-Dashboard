@@ -1,7 +1,7 @@
 pandas
 plotly
 streamlit
-streamlit-gsheets-connection
+st-gsheets-connection
 openpyxl
 streamlit_option_menu
 newsapi-python==0.2.7  # Fix: Corrected package name
