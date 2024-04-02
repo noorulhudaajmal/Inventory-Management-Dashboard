@@ -1,5 +1,6 @@
 import pandas as pd
 import datetime
+import plotly.express as px
 
 months_list = ['January', 'February', 'March', 'April', 'May', 'June',
                'July', 'August', 'September', 'October', 'November', 'December']
@@ -145,3 +146,59 @@ def news_card():
       </div>
     </article>
     """
+
+
+def pre_process_trading_data(data):
+    data['DATE'] = pd.to_datetime(data['DATE'], errors='coerce')
+    data['MARKET_PRICE_USD'] = pd.to_numeric(data['MARKET_PRICE_USD'], errors='coerce')
+    data['Month'] = data['DATE'].dt.month_name().str[:3]
+    data['Year'] = data['DATE'].dt.year
+    return data
+
+
+def get_market_price_map(data):
+    month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    # Ensure months are in chronological order
+    month_to_number = {
+        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+    }
+    df_agg = data.groupby(['Year', 'Month']).agg({'MARKET_PRICE_USD': 'sum'}).reset_index()
+    df_agg['MonthNumber'] = df_agg['Month'].map(month_to_number)
+    df_agg_sorted = df_agg.sort_values(by=['MonthNumber'])
+
+    heatmap_data = df_agg_sorted.pivot("Month", "Year", "MARKET_PRICE_USD")
+    unique_months = heatmap_data.index.tolist()
+    new_index = [month for month in month_order if month in unique_months]
+    heatmap_data = heatmap_data.reindex(new_index)
+    # heatmap_data = heatmap_data.fillna(0)
+    fig = px.imshow(
+        heatmap_data,
+        labels=dict(x="Year", y="Month", color="Market Price (USD)"),
+        x=heatmap_data.columns,  # Year
+        y=heatmap_data.index,  # Month
+        aspect="auto",
+        title="Market Price Map",
+        color_continuous_scale='Emrld',
+    )
+
+    # Display the price value inside each box
+    fig.update_traces(text=heatmap_data.values, texttemplate="%{text:.0f}")
+
+    # Update the layout
+    fig.update_layout(
+        xaxis_title='Year',
+        yaxis_title='Month',
+        xaxis=dict(tickmode='array', tickvals=heatmap_data.columns, ticktext=[int(x) for x in heatmap_data.columns]),
+        yaxis=dict(tickmode='array', tickvals=heatmap_data.index),
+        coloraxis_showscale=False
+    )
+
+    # Update xaxis type to be 'category' to avoid non-integer values on axis
+    fig.update_xaxes(type='category')
+
+    # Remove grid lines
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False)
+
+    return fig

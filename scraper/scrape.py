@@ -70,3 +70,5 @@ def get_countries_codes(df, col_name):
     df["ISO"] = df[col_name].apply(lambda x: countries.get(x, 'Unknown code'))
 
     return df
+
+

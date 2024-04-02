@@ -1,23 +1,27 @@
 from datetime import datetime, timedelta
+
+import numpy as np
 import pandas as pd
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import plotly.graph_objects as go
 import plotly.express as px
 from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
-    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, news_card
+    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, news_card, pre_process_trading_data, \
+    get_market_price_map
 from streamlit_option_menu import option_menu
 import requests
 from scraper.scrape import scrap_data, get_countries_codes
+from scraper.calendar_scraper import get_geopolitical_calendar
 
 st.set_page_config(page_title="Inventory Insights", page_icon="📊", layout="wide")
 
 # Update the GSheets connection
 conn = st.connection("gsheets", type=GSheetsConnection)
+new_conn = st.connection("pricing_data", type=GSheetsConnection)
 
 API_KEY = st.secrets.news_api_key["key"]
 API_ENDPOINT = "https://api.newsfilter.io/search?token={}".format(API_KEY)
-
 
 # ---------------------------------- Page Styling -------------------------------------
 
@@ -42,11 +46,13 @@ with st.sidebar:
 
 df = pd.DataFrame()
 df0 = pd.DataFrame()
+df_trading = pd.DataFrame()
 
 if file_upload is None:
     # Read data directly from Google Sheets
     df = conn.read(worksheet="Data_Sheet")
     df0 = conn.read(worksheet="Container X")
+    df_trading = new_conn.read(worksheet="Trading market price")
 
 else:
     if file_upload.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
@@ -69,7 +75,8 @@ colors = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#84a59d", "#00
 # ---------------------------------------------------------------------------------
 menu = option_menu(menu_title=None, options=["Overview", "Sales & Costs",
                                              "Inventory In vs. Out", "Sales' Ports",
-                                             "News"], orientation="horizontal")
+                                             "Trading Prices",
+                                             "Calendar"], orientation="horizontal")
 
 # --------------------------------- Charts  ---------------------------------------
 if menu == "Overview":
@@ -118,8 +125,8 @@ if menu == "Overview":
                       delta=f"{percentage_change_ur:.1f}%")
 
     kpi_row[3].metric(label="Inventory Picked Up",
-                       value=f"{inv_picked} items",
-                       delta=f"{percentage_change_ip:.1f}%")
+                      value=f"{inv_picked} items",
+                      delta=f"{percentage_change_ip:.1f}%")
 
     kpi_row[4].metric(label="Gate In",  # Aging of Inventory (Gate In to Today)
                       value=f"{gatein_aging:.1f} days",
@@ -319,9 +326,11 @@ if menu == "Sales' Ports":
         st.warning("Error retrieving data!!!")
         st.info(e)
 
-    filter_row = st.columns((1, 1, 1, 2))
-    size = filter_row[1].selectbox("Size", options=["20FT", "40FT"])
-    exports = filter_row[2].selectbox("Export Size", options=["Large", "Medium", "Small"])
+    row_1 = st.columns((1, 4))
+    row_1[0].write("# ")
+    row_1[0].write("# ")
+    size = row_1[0].selectbox("Size", options=["20FT", "40FT"])
+    exports = row_1[0].selectbox("Export Size", options=["Large", "Medium", "Small"])
 
     small = data[data[size] >= 9000]
     medium = data[((data[size] < 9000) & (data[size] >= 5000))]
@@ -334,7 +343,7 @@ if menu == "Sales' Ports":
     else:
         df = large
 
-    row_2 = st.columns((3, 2))
+    # row_2 = st.columns((3, 2))
     fig = go.Figure()
     fig.add_trace(
         go.Bar(x=df["Port"], y=df[size],
@@ -353,49 +362,21 @@ if menu == "Sales' Ports":
                         font_family="Rockwell"
                         ))
 
-    row_2[0].plotly_chart(fig, use_container_width=True)
+    row_1[1].plotly_chart(fig, use_container_width=True)
 
     data = get_countries_codes(data, "Port")
 
-    # fig = px.choropleth(data, locations="ISO",
-    #                     color=f"{size}",
-    #                     hover_name="Port",
-    #                     color_continuous_scale=px.colors.sequential.Plasma)
-    # row_2[1].plotly_chart(fig, use_container_width=True)
-
-    # row_3 = st.columns((1, 4, 1))
-    df = data[["Origin Country (Port/City)", "20FT", "40FT"]]
-    df["20FT"] = df["20FT"].apply(lambda x: f"${x}")
-    df["40FT"] = df["40FT"].apply(lambda x: f"${x}")
-    fig = go.Figure(data=[go.Table(
-        columnwidth=[2, 1, 1],
-        header=dict(
-            values=list(df.columns),
-            font=dict(size=20, color='white', family='ubuntu'),
-            fill_color='#264653',
-            align=['left', 'center'],
-            height=60
-        ),
-        cells=dict(
-            values=[df[K].tolist() for K in df.columns],
-            font=dict(size=16, color="black", family='ubuntu'),
-            fill_color='#f5ebe0',
-            height=40
-        ))]
-    )
-    fig.update_layout(margin=dict(l=0, r=10, b=10, t=30), height=400)
-    row_2[1].plotly_chart(fig, use_container_width=True)
-    # st.dataframe(data, use_container_width=True)
     st.write("---")
 
     if len(df0) != 0:
         df0["WEEK_TO_DISPLAY"] = pd.to_datetime(df0["WEEK_TO_DISPLAY"])
 
-        row_3 = st.columns((1, 4))
-        row_3[0].write("# ")
-        container_type = row_3[0].selectbox(label="Container Type",
+        row_2 = st.columns((1, 4))
+        row_2[0].write("# ")
+        row_2[0].write("# ")
+        container_type = row_2[0].selectbox(label="Container Type",
                                             options=df0["CONTAINER_TYPE"].unique())
-        container_condition = row_3[0].selectbox(label="Container Type",
+        container_condition = row_2[0].selectbox(label="Container Type",
                                                  options=df0["CONTAINER_CONDITION"].unique())
         selected_data = df0[(df0["CONTAINER_TYPE"] == container_type) &
                             (df0["CONTAINER_CONDITION"] == container_condition)]
@@ -425,43 +406,35 @@ if menu == "Sales' Ports":
                             font_family="Rockwell"
                             ))
 
-        row_3[1].plotly_chart(fig, use_container_width=True)
+        row_2[1].plotly_chart(fig, use_container_width=True)
 
 # ------------------------------ Page 5 -----------------------------------------------
-if menu == "News":
-    year = st.sidebar.selectbox(label="Year", options=year_list, index=2)
-    filtered_df = df[df["Year"] == year]
-    vendors = ["TGH", "CRGO", "TRTN", "GSL", "CMRE"]
-    suppliers = st.sidebar.multiselect(label="Vendor", options=vendors,
-                                       placeholder="All")
-    if not suppliers:
-        suppliers = vendors
+if menu == "Calendar":
+    df = get_geopolitical_calendar()
 
-    yesterday = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    today = datetime.now().strftime('%Y-%m-%d')
-    response_data_store = {}
-    for supplier in suppliers:
-        queryString = f"symbols:{supplier} AND publishedAt:[{yesterday} TO {today}]"
-        payload = {
-            "queryString": queryString,
-            "from": 0,
-            "size": 10
-        }
-        response = requests.post(API_ENDPOINT, json=payload)
-        response_data = response.json()
-        response_data_store.update(response_data)
-    if len(response_data_store["articles"]) == 0:
-        st.info("No news found", icon="ℹ")
+    # Display the DataFrame as a table
+    styler = df.style.hide_index()
+    st.write(styler.to_html(escape=False), unsafe_allow_html=True)
 
-    for article in response_data_store['articles']:
-        title = article.get('title', )
-        description = article.get('description', 'No description found')
-        source_name = article['source'].get('name', 'No Source listed')
-        published_at = article.get('publishedAt', today)
-        url = article.get('sourceUrl', './')
-        formatted_description = f"{source_name} - {published_at}"
-        st.markdown(news_card().format(title=title, description=description,
-                                       published_at=formatted_description, url=url),
-                    unsafe_allow_html=True)
-        st.write("---")
+# -------------------------------------------------------------------------------------------------------
+
+if menu == "Trading Prices":
+    df_trading = pre_process_trading_data(df_trading)
+
+    outer_cols = st.columns((3, 2))
+    with outer_cols[0]:
+        st.dataframe(df_trading)
+
+    with outer_cols[1]:
+        filter_row = st.columns(3)
+        cities = df_trading['CITY'].unique()
+        selected_city = filter_row[0].selectbox(label="Location", options=cities)
+        filtered_trading_data = df_trading[df_trading['CITY'] == selected_city]
+
+        # temp = filtered_trading_data.groupby(['Month', 'Year'])['MARKET_PRICE_USD'].sum().reset_index()
+        # st.dataframe(temp)
+        heatmap_fig = get_market_price_map(filtered_trading_data)
+
+        st.plotly_chart(heatmap_fig, use_container_width=True)
+
 # -------------------------------------------------------------------------------------------------------
