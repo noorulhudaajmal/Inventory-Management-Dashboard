@@ -92,7 +92,7 @@ def container_count_plot(data):
             name='Month-to-Month Change',
             mode="markers+lines",
             marker=dict(color='#e9c46a'),
-            hovertemplate='%{y:.2f}%<extra></extra>'
+            hovertemplate='Percentage Change: %{y:.2f}%<extra></extra>'
         ),
         secondary_y=True
     )
