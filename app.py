@@ -1,18 +1,17 @@
-from datetime import datetime, timedelta
-
 import numpy as np
 import pandas as pd
 import streamlit as st
+from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
-import plotly.graph_objects as go
-import plotly.express as px
-from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
-    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, news_card, pre_process_trading_data, \
-    get_market_price_map, container_count_plot
 from streamlit_option_menu import option_menu
-import requests
 from scraper.scrape import scrap_data, get_countries_codes
 from scraper.calendar_scraper import get_geopolitical_calendar
+
+from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
+    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, pre_process_trading_data
+from plots import get_market_price_map, container_count_plot, available_for_sale_plot, sold_inventory_plot, \
+    monthly_sales_plot, sales_cost_breakdown_plot, inventory_plot, inventory_per_depot, shipping_costs_plot, \
+    container_prices_plot
 
 st.set_page_config(page_title="Inventory Insights", page_icon="📊", layout="wide")
 
@@ -146,44 +145,16 @@ if menu == "Overview":
     depot_activity_data = filtered_df[filtered_df["Status"] == "SELL"]
     depot_activity = depot_activity_data.groupby(['Depot', 'Size'])['Unit #'].nunique().unstack(fill_value=0)
 
-    fig = go.Figure()
-    i = 0
-    for size in depot_activity.columns:
-        fig.add_trace(
-            go.Bar(x=depot_activity.index, y=depot_activity[size], name=size, marker=dict(color=colors[i])))
-        i += 1
-
-    fig.update_layout(barmode='group', xaxis_title='Depot', yaxis_title='Units Available for Sale',
-                      title='INVENTORY AVAILABLE FOR SALE',
-                      xaxis={'categoryorder': 'total ascending'}, hovermode="x unified",
-                      legend_title="Size", hoverlabel=dict(bgcolor="white",
-                                                           font_color="black",
-                                                           font_size=16,
-                                                           font_family="Rockwell"
-                                                           )
-                      )
+    fig = available_for_sale_plot(depot_activity)
     charts_row[0].plotly_chart(fig, use_container_width=True)
     # -------------------------- Vendor Ratio ---------------------------------------
     depot_activity_data = filtered_df[filtered_df["Status"] == "SOLD"]
     depot_activity = depot_activity_data.groupby(['Depot', 'Size'])['Unit #'].nunique().unstack(fill_value=0)
 
-    fig = go.Figure()
-    i = 0
-    for size in depot_activity.columns:
-        fig.add_trace(
-            go.Bar(x=depot_activity.index, y=depot_activity[size], name=size, marker=dict(color=colors[i])))
-        i += 1
-
-    fig.update_layout(barmode='group', xaxis_title='Depot', yaxis_title='# Units Sold',
-                      title='SOLD INVENTORY DISTRIBUTION',
-                      xaxis={'categoryorder': 'total ascending'}, hovermode="x unified",
-                      legend_title="Size", hoverlabel=dict(bgcolor="white",
-                                                           font_color="black",
-                                                           font_size=16,
-                                                           font_family="Rockwell"
-                                                           )
-                      )
+    fig = sold_inventory_plot(depot_activity)
     charts_row[1].plotly_chart(fig, use_container_width=True)
+
+
 # ------------------------------ Page 2 -----------------------------------------------
 if menu == "Sales & Costs":
     # ------------------------ Filters ------------------------------------------------
@@ -201,52 +172,15 @@ if menu == "Sales & Costs":
 
     charts_row = st.columns(2)
     # -------------------------- Monthly Sales Scatter Plot ---------------------------
-    fig = go.Figure()
-    # Iterate over unique 'Size' values
-    i = 0
-    for size in filtered_data['Size'].unique():
-        df_size = filtered_data[filtered_data['Size'] == size]
-        df_size = pd.DataFrame(df_size.groupby("Month")["Sale Price"].sum())
-        df_size = df_size.reindex(months_list, axis=0)
-        df_size.reset_index(inplace=True)
-        fig.add_trace(go.Scatter(
-            x=df_size['Month'],
-            y=df_size['Sale Price'],
-            text=df_size['Sale Price'],
-            mode='lines+markers+text',
-            textposition='top center',
-            name=size,
-            marker=dict(color=colors[i]),
-            line=dict(color=colors[i])
-        ))
-        i += 1
-    fig.update_layout(title="Sales by Month", xaxis_title="Months", yaxis_title="Sales", hovermode="x unified",
-                      legend_title="Size", hoverlabel=dict(bgcolor="white",
-                                                           font_color="black",
-                                                           font_size=16,
-                                                           font_family="Rockwell"
-                                                           )
-                      )
+    fig = monthly_sales_plot(filtered_data)
     charts_row[0].plotly_chart(fig, use_container_width=True)
+
     # -------------------------- Sales vs. Cost Breakdown Bar plot --------------------
     grouped_data = filtered_data.groupby(['Month'])[['Storage Cost', 'Repair Cost', 'Purchase Cost']].sum()
     grouped_data = grouped_data.reindex(months_list, axis=0)
 
     # Create the stacked bar chart
-    fig = go.Figure()
-    i = 0
-    for cost in grouped_data.columns:
-        fig.add_trace(go.Bar(x=grouped_data.index, y=grouped_data[cost], name=cost, marker=dict(color=colors[i])))
-        i += 1
-    fig.update_layout(
-        title="AVG. YEARLY SALES VS. COST BREAKDOWN",
-        xaxis_title="Months", yaxis_title="Cost", barmode='stack', hovermode="x unified",
-        legend_title="Cost", hoverlabel=dict(bgcolor="white",
-                                             font_color="black",
-                                             font_size=16,
-                                             font_family="Rockwell"
-                                             )
-    )
+    fig = sales_cost_breakdown_plot(grouped_data)
     charts_row[1].plotly_chart(fig, use_container_width=True)
 
 # ------------------------------ Page 3 -----------------------------------------------
@@ -263,59 +197,18 @@ if menu == "Inventory In vs. Out":
     filtered_df['Month'] = pd.Categorical(filtered_df['Month'], categories=months_list, ordered=True)
 
     charts_row = st.columns(2)
-    inv_in_out_data = filtered_df.groupby(["Month"])[["Gate In", "Gate Out"]].count().reset_index()
 
+    inv_in_out_data = filtered_df.groupby(["Month"])[["Gate In", "Gate Out"]].count().reset_index()
     inv_in_out_data["Gate Out"] = (-1) * inv_in_out_data["Gate Out"]
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(x=inv_in_out_data["Month"], y=inv_in_out_data["Gate In"], name="Gate In Items",
-               marker=dict(color="#2a9d8f"))
-    )
-    fig.add_trace(
-        go.Bar(x=inv_in_out_data["Month"], y=inv_in_out_data["Gate Out"], name="Gate Out Items",
-               marker=dict(color="#e63946"))
-    )
-    fig.update_layout(
-        barmode='group',  # This combines positive and negative bars for each month
-        title='Gate In vs. Gate Out over-time',
-        xaxis_title='Month',
-        yaxis_title='Items Count',
-        hovermode="x unified",
-        showlegend=False,
-        hoverlabel=dict(bgcolor="white",
-                        font_color="black",
-                        font_size=12,
-                        font_family="Rockwell"
-                        ))
-
+    fig = inventory_plot(inv_in_out_data)
     charts_row[0].plotly_chart(fig, use_container_width=True)
+
     # ------------------------------------------------------------------------------------
     inv_in_out_data = filtered_df.groupby(["Depot"])[["Gate In", "Gate Out"]].count().reset_index()
     inv_in_out_data["Gate Out"] = (-1) * inv_in_out_data["Gate Out"]
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(x=inv_in_out_data["Depot"], y=inv_in_out_data["Gate In"], name="Gate In Items",
-               marker=dict(color="#2a9d8f"))
-    )
-    fig.add_trace(
-        go.Bar(x=inv_in_out_data["Depot"], y=inv_in_out_data["Gate Out"], name="Gate Out Items",
-               marker=dict(color="#e63946"))
-    )
-    fig.update_layout(
-        barmode='group',  # This combines positive and negative bars for each month
-        title='Gate In vs. Gate Out w.r.t Depot',
-        xaxis_title='Depot',
-        yaxis_title='Items Count',
-        hovermode="x unified",
-        showlegend=False,
-        hoverlabel=dict(bgcolor="white",
-                        font_color="black",
-                        font_size=12,
-                        font_family="Rockwell"
-                        ))
-
+    fig = inventory_per_depot(inv_in_out_data)
     charts_row[1].plotly_chart(fig, use_container_width=True)
 # ------------------------------ Page 4 -----------------------------------------------
 if menu == "Sales' Ports":
@@ -343,29 +236,8 @@ if menu == "Sales' Ports":
     else:
         df = large
 
-    # row_2 = st.columns((3, 2))
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(x=df["Port"], y=df[size],
-               marker=dict(color="#264653"))
-    )
-    fig.update_layout(
-        title='Shipping Container Costs From Western US',
-        xaxis_title='Port',
-        yaxis_title=f"Amount($)",
-        hovermode="x unified",
-        showlegend=False,
-        height=400,
-        hoverlabel=dict(bgcolor="white",
-                        font_color="black",
-                        font_size=12,
-                        font_family="Rockwell"
-                        ))
-
+    fig = shipping_costs_plot(df, size)
     row_1[1].plotly_chart(fig, use_container_width=True)
-
-    data = get_countries_codes(data, "Port")
-
     st.write("---")
 
     if len(df0) != 0:
@@ -383,29 +255,7 @@ if menu == "Sales' Ports":
         df1 = selected_data.groupby(["WEEK_TO_DISPLAY",
                                      "SALES_LOCATION_NAME"])["MEAN_PRICE_PER_CONTAINER"].mean().reset_index()
 
-        fig = go.Figure()
-        ind = 0
-        for loc in df1["SALES_LOCATION_NAME"].unique():
-            filtered_df1 = df1[df1["SALES_LOCATION_NAME"] == loc]
-            fig.add_trace(
-                go.Scatter(
-                    x=filtered_df1["WEEK_TO_DISPLAY"], y=filtered_df1["MEAN_PRICE_PER_CONTAINER"],
-                    mode="lines+markers", name=loc, line=dict(color=colors[ind]), marker=dict(color=colors[ind])
-                )
-            )
-            ind += 1
-        fig.update_layout(
-            title='Container Prices w.r.t Location overtime',
-            xaxis_title='Date',
-            yaxis_title="Container Prices",
-            legend_title="Sales Location",
-            hovermode="x unified",
-            hoverlabel=dict(bgcolor="white",
-                            font_color="black",
-                            font_size=12,
-                            font_family="Rockwell"
-                            ))
-
+        fig = container_prices_plot(df1)
         row_2[1].plotly_chart(fig, use_container_width=True)
 
 # ------------------------------ Page 5 -----------------------------------------------

@@ -18,25 +18,13 @@ html, body, [class*="css"] {
     height: 100vh;
 }
 
-.news {
-          display: flex;
-          flex-direction: row-reverse;
-          border-radius: 10px;
-        }
-
- .content.text{
-    flex: 2;
-    padding: 20px;
- }
-
-
-/* style.css */
-/* style.css */
 table {
     width: 100%;
     margin-top: 1rem;
     border-collapse: collapse;
     border-spacing: 0;
+    cell-spacing:0;
+    cell-padding:0;
 }
 
 thead {
@@ -55,6 +43,7 @@ th, td {
 
 td {
     background: #f3f3f3;
+    border-collapse:collapse;
 }
 
 tr {
@@ -70,4 +59,7 @@ th:first-child, td:first-child {
     border-left: none;
 }
 
-
+.main-svg{
+    border-radius:5%;
+    padding: 0 0.5rem 0 0.5rem;
+}
