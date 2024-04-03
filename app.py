@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
     get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, news_card, pre_process_trading_data, \
-    get_market_price_map
+    get_market_price_map, container_count_plot
 from streamlit_option_menu import option_menu
 import requests
 from scraper.scrape import scrap_data, get_countries_codes
@@ -419,14 +419,39 @@ if menu == "Calendar":
 # -------------------------------------------------------------------------------------------------------
 
 if menu == "Trading Prices":
+    st.markdown(
+        f"""
+    <style>
+    .stPlotlyChart {{
+     outline: 5px solid {'#FFFFFF'};
+     border-radius: 10px;
+     box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.20), 0 6px 20px 0 rgba(0, 0, 0, 0.30);
+    }}
+    </style>
+    """, unsafe_allow_html=True
+    )
     df_trading = pre_process_trading_data(df_trading)
 
-    outer_cols = st.columns((3, 2))
+    outer_cols = st.columns((6, 4))
     with outer_cols[0]:
-        st.dataframe(df_trading)
+        st.write("###### ")
+        filter_row = st.columns((1, 4, 1))
+        selected_range = filter_row[1].slider(
+            'Select Date Range:',
+            min_value=df_trading['DATE'].min().to_pydatetime(),
+            max_value=df_trading['DATE'].max().to_pydatetime(),
+            value=(df_trading['DATE'].min().to_pydatetime(), df_trading['DATE'].max().to_pydatetime()),
+            format='MMM YYYY'
+        )
+        selected_start, selected_end = pd.to_datetime(selected_range[0]), pd.to_datetime(selected_range[1])
+        filtered_df = df_trading[(df_trading['DATE'] >= selected_start) & (df_trading['DATE'] <= selected_end)]
+
+        container_count_fig = container_count_plot(filtered_df)
+        st.plotly_chart(container_count_fig, use_container_width=True)
 
     with outer_cols[1]:
         filter_row = st.columns(3)
+        st.write("### ")
         cities = df_trading['CITY'].unique()
         selected_city = filter_row[0].selectbox(label="Location", options=cities)
         filtered_trading_data = df_trading[df_trading['CITY'] == selected_city]

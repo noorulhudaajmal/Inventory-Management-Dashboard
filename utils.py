@@ -1,6 +1,9 @@
 import pandas as pd
 import datetime
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 
 months_list = ['January', 'February', 'March', 'April', 'May', 'June',
                'July', 'August', 'September', 'October', 'November', 'December']
@@ -200,5 +203,55 @@ def get_market_price_map(data):
     # Remove grid lines
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(showgrid=False)
+
+    return fig
+
+
+def container_count_plot(data):
+    # Group by month and year, and sum the container counts
+    data['MONTH_YEAR'] = data['DATE'].dt.to_period('M')
+    data = data.groupby('MONTH_YEAR')['CONTAINER_COUNT'].sum().reset_index()
+
+    # Sort the data by 'MONTH_YEAR'
+    data = data.sort_values(by='MONTH_YEAR')
+
+    data['Month-to-Month Change'] = data['CONTAINER_COUNT'].pct_change() * 100
+    data['Month-to-Month Change'] = data['Month-to-Month Change'].fillna(0)
+    # Convert 'MONTH_YEAR' to the desired string format for plotting
+    data['MONTH_YEAR'] = data['MONTH_YEAR'].dt.strftime('%b %Y')
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    fig.add_trace(
+        go.Bar(
+            x=data['MONTH_YEAR'],
+            y=data['CONTAINER_COUNT'],
+            name='Listed Count',
+            marker=dict(color='#287271'),
+            hovertemplate='%{y:.0f}'
+        ),
+        secondary_y=False
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=data['MONTH_YEAR'],
+            y=data['Month-to-Month Change'],
+            name='Month-to-Month Change',
+            mode="markers+lines",
+            marker=dict(color='#e9c46a'),
+            hovertemplate='%{y:.2f}%<extra></extra>'
+        ),
+        secondary_y=True
+    )
+    fig.update_layout(title='Listed Container Count',
+                      xaxis_title='Time', yaxis_title='Container Count',
+                      hovermode="x unified",
+                      hoverlabel=dict(bgcolor="white",
+                                      font_color="black",
+                                      font_size=12,
+                                      font_family="Rockwell"
+                                      ),
+                      legend=dict(orientation="h", xanchor='center', x=0.5, y=-0.25))
 
     return fig
