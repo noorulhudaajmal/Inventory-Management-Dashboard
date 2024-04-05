@@ -11,99 +11,6 @@ months_list = ['January', 'February', 'March', 'April', 'May', 'June',
                'July', 'August', 'September', 'October', 'November', 'December']
 
 
-def get_market_price_map(data):
-    month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    # Ensure months are in chronological order
-    month_to_number = {
-        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
-    }
-    df_agg = data.groupby(['Year', 'Month']).agg({'MARKET_PRICE_USD': 'sum'}).reset_index()
-    df_agg['MonthNumber'] = df_agg['Month'].map(month_to_number)
-    df_agg_sorted = df_agg.sort_values(by=['MonthNumber'])
-
-    heatmap_data = df_agg_sorted.pivot("Month", "Year", "MARKET_PRICE_USD")
-    unique_months = heatmap_data.index.tolist()
-    new_index = [month for month in month_order if month in unique_months]
-    heatmap_data = heatmap_data.reindex(new_index)
-    # heatmap_data = heatmap_data.fillna(0)
-    fig = px.imshow(
-        heatmap_data,
-        labels=dict(x="Year", y="Month", color="Market Price (USD)"),
-        x=heatmap_data.columns,  # Year
-        y=heatmap_data.index,  # Month
-        aspect="auto",
-        title="Market Price Map",
-        color_continuous_scale='Emrld',
-    )
-
-    # Display the price value inside each box
-    fig.update_traces(text=heatmap_data.values, texttemplate="%{text:.0f}")
-
-    # Update the layout
-    fig.update_layout(
-        xaxis_title='Year',
-        yaxis_title='Month',
-        xaxis=dict(tickmode='array', tickvals=heatmap_data.columns, ticktext=[int(x) for x in heatmap_data.columns]),
-        yaxis=dict(tickmode='array', tickvals=heatmap_data.index),
-        coloraxis_showscale=False
-    )
-
-    # Update xaxis type to be 'category' to avoid non-integer values on axis
-    fig.update_xaxes(type='category')
-
-    # Remove grid lines
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(showgrid=False)
-
-    return fig
-
-
-def container_count_plot(data):
-    # Group by month and year, and sum the container counts
-    data['MONTH_YEAR'] = data['DATE'].dt.to_period('M')
-    data = data.groupby('MONTH_YEAR')['CONTAINER_COUNT'].sum().reset_index()
-
-    # Sort the data by 'MONTH_YEAR'
-    data = data.sort_values(by='MONTH_YEAR')
-
-    data['Month-to-Month Change'] = data['CONTAINER_COUNT'].pct_change() * 100
-    data['Month-to-Month Change'] = data['Month-to-Month Change'].fillna(0)
-    # Convert 'MONTH_YEAR' to the desired string format for plotting
-    data['MONTH_YEAR'] = data['MONTH_YEAR'].dt.strftime('%b %Y')
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    fig.add_trace(
-        go.Bar(
-            x=data['MONTH_YEAR'],
-            y=data['CONTAINER_COUNT'],
-            name='Listed Count',
-            marker=dict(color='#287271'),
-            hovertemplate='%{y:.0f}'
-        ),
-        secondary_y=False
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=data['MONTH_YEAR'],
-            y=data['Month-to-Month Change'],
-            name='Month-to-Month Change',
-            mode="markers+lines",
-            marker=dict(color='#e9c46a'),
-            hovertemplate='Percentage Change: %{y:.2f}%<extra></extra>'
-        ),
-        secondary_y=True
-    )
-    fig.update_layout(title='Listed Container Count',
-                      xaxis_title='Time', yaxis_title='Container Count',
-                      legend=dict(orientation="h", xanchor='center', x=0.5, y=-0.25))
-    fig = format_hover_layout(fig)
-
-    return fig
-
-
 def available_for_sale_plot(data):
     fig = go.Figure()
     i = 0
@@ -113,7 +20,7 @@ def available_for_sale_plot(data):
         i += 1
 
     fig.update_layout(barmode='group', xaxis_title='Depot', yaxis_title='Units Available for Sale',
-                      title='INVENTORY AVAILABLE FOR SALE',
+                      title='DIST. OF INVENTORY AVAILABLE FOR SALE',
                       xaxis={'categoryorder': 'total ascending'},
                       legend_title="Size")
     fig = format_hover_layout(fig)
@@ -137,6 +44,45 @@ def sold_inventory_plot(data):
 
     return fig
 
+
+def inventory_avb_breakdown_plot(avb_inventory):
+    # Group the data by 'Size' and 'Condition Status'
+    inventory_grouped = avb_inventory.groupby(['Size', 'Condition']).size().reset_index(name='Count')
+
+    # Get the list of all unique sizes and conditions for the plot
+    sizes = inventory_grouped['Size'].unique()
+    conditions = inventory_grouped['Condition'].unique()
+
+    # Create the figure
+    fig = go.Figure()
+
+    ind = 0
+    # Add a bar trace for each condition
+    for condition in conditions:
+        filtered_data = inventory_grouped[inventory_grouped['Condition'] == condition]
+        fig.add_trace(go.Bar(
+            x=filtered_data['Size'],
+            y=filtered_data['Count'],
+            name=condition,
+            text=filtered_data['Count'],
+            marker=dict(color=colors[ind]),
+        ))
+        ind+=1
+
+    # Update the layout
+    fig.update_layout(
+        barmode='group',
+        title='BREAKDOWN OF INVENTORY AVAILABLE FOR SALE',
+        xaxis_title='Size',
+        yaxis_title='Items Count',
+        hovermode="x unified",
+        legend_title_text='Condition',
+        legend=dict(orientation="h", xanchor='center', x=0.5, y=-0.25)
+    )
+
+    fig = format_hover_layout(fig)
+
+    return fig
 
 def monthly_sales_plot(data):
     fig = go.Figure()
@@ -228,7 +174,10 @@ def shipping_costs_plot(data, size):
     fig = go.Figure()
     fig.add_trace(
         go.Bar(x=data["Port"], y=data[size],
-               marker=dict(color="#264653"))
+               marker=dict(color="#264653"),
+               hovertemplate='$%{y}',
+               name='Shipping Cost'
+               )
     )
     fig.update_layout(
         title='Shipping Container Costs From Western US',
@@ -242,14 +191,26 @@ def shipping_costs_plot(data, size):
 
 
 def container_prices_plot(data):
+    # Group by month and year, and sum the container counts
+    data['MONTH_YEAR'] = data['DATE'].dt.to_period('M')
+    data = data.groupby(['MONTH_YEAR', 'CITY'])['MARKET_PRICE_USD'].sum().reset_index()
+
+    # Sort the data by 'MONTH_YEAR'
+    data = data.sort_values(by='MONTH_YEAR')
+
+    # Convert 'MONTH_YEAR' to the desired string format for plotting
+    data['MONTH_YEAR'] = data['MONTH_YEAR'].dt.strftime('%b %Y')
+
     fig = go.Figure()
     ind = 0
-    for loc in data["SALES_LOCATION_NAME"].unique():
-        filtered_df1 = data[data["SALES_LOCATION_NAME"] == loc]
+    for loc in data["CITY"].unique():
+        filtered_df1 = data[data["CITY"] == loc]
         fig.add_trace(
-            go.Scatter(
-                x=filtered_df1["WEEK_TO_DISPLAY"], y=filtered_df1["MEAN_PRICE_PER_CONTAINER"],
-                mode="lines+markers", name=loc, line=dict(color=colors[ind]), marker=dict(color=colors[ind])
+            go.Bar(
+                x=filtered_df1["MONTH_YEAR"], y=filtered_df1["MARKET_PRICE_USD"],
+                name=loc,
+                marker=dict(color=colors[ind]),
+                hovertemplate='$%{y}'
             )
         )
         ind += 1
@@ -262,8 +223,102 @@ def container_prices_plot(data):
     return fig
 
 
+def container_count_plot(data):
+    # Group by month and year, and sum the container counts
+    data['MONTH_YEAR'] = data['DATE'].dt.to_period('M')
+    data = data.groupby('MONTH_YEAR')['CONTAINER_COUNT'].sum().reset_index()
+
+    # Sort the data by 'MONTH_YEAR'
+    data = data.sort_values(by='MONTH_YEAR')
+
+    data['Month-to-Month Change'] = data['CONTAINER_COUNT'].pct_change() * 100
+    data['Month-to-Month Change'] = data['Month-to-Month Change'].fillna(0)
+    # Convert 'MONTH_YEAR' to the desired string format for plotting
+    data['MONTH_YEAR'] = data['MONTH_YEAR'].dt.strftime('%b %Y')
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    fig.add_trace(
+        go.Bar(
+            x=data['MONTH_YEAR'],
+            y=data['CONTAINER_COUNT'],
+            name='Listed Count',
+            marker=dict(color='#287271'),
+            hovertemplate='%{y:.0f}'
+        ),
+        secondary_y=False
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=data['MONTH_YEAR'],
+            y=data['Month-to-Month Change'],
+            name='Month-to-Month Change',
+            mode="markers+lines",
+            marker=dict(color='#e9c46a'),
+            hovertemplate='Percentage Change: %{y:.2f}%<extra></extra>'
+        ),
+        secondary_y=True
+    )
+    fig.update_layout(title='Listed Container Count',
+                      xaxis_title='Time', yaxis_title='Container Count',
+                      legend=dict(orientation="h", xanchor='center', x=0.5, y=-0.25))
+    fig = format_hover_layout(fig)
+
+    return fig
+
+
+def get_market_price_map(data):
+    month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    # Ensure months are in chronological order
+    month_to_number = {
+        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+    }
+    df_agg = data.groupby(['Year', 'Month']).agg({'MARKET_PRICE_USD': 'sum'}).reset_index()
+    df_agg['MonthNumber'] = df_agg['Month'].map(month_to_number)
+    df_agg_sorted = df_agg.sort_values(by=['MonthNumber'])
+
+    heatmap_data = df_agg_sorted.pivot("Month", "Year", "MARKET_PRICE_USD")
+    unique_months = heatmap_data.index.tolist()
+    new_index = [month for month in month_order if month in unique_months]
+    heatmap_data = heatmap_data.reindex(new_index)
+    # heatmap_data = heatmap_data.fillna(0)
+    fig = px.imshow(
+        heatmap_data,
+        labels=dict(x="Year", y="Month", color="Market Price (USD)"),
+        x=heatmap_data.columns,  # Year
+        y=heatmap_data.index,  # Month
+        aspect="auto",
+        title="Market Price Map",
+        color_continuous_scale='Emrld',
+    )
+
+    # Display the price value inside each box
+    fig.update_traces(text=heatmap_data.values, texttemplate="%{text:.0f}")
+
+    # Update the layout
+    fig.update_layout(
+        xaxis_title='Year',
+        yaxis_title='Month',
+        xaxis=dict(tickmode='array', tickvals=heatmap_data.columns, ticktext=[int(x) for x in heatmap_data.columns]),
+        yaxis=dict(tickmode='array', tickvals=heatmap_data.index),
+        coloraxis_showscale=False
+    )
+
+    # Update xaxis type to be 'category' to avoid non-integer values on axis
+    fig.update_xaxes(type='category')
+
+    # Remove grid lines
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False)
+
+    return fig
+
+
 def format_hover_layout(fig):
     fig = fig.update_layout(
+        height=400,
         hovermode="x unified",
         hoverlabel=dict(bgcolor="white", font_color="black",
                         font_size=12, font_family="Rockwell"))

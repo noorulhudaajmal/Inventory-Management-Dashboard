@@ -141,6 +141,19 @@ def pre_process_trading_data(data):
     data['MARKET_PRICE_USD'] = pd.to_numeric(data['MARKET_PRICE_USD'], errors='coerce')
     data['Month'] = data['DATE'].dt.month_name().str[:3]
     data['Year'] = data['DATE'].dt.year
+
+    data['CONTAINER_CONDITION'] = data['CONTAINER_CONDITION'].apply(transform_container_condition_value)
+    data['CONTAINER_TYPE'] = data['CONTAINER_TYPE'].apply(transform_container_condition_value)
+
     return data
 
+
+# Function to transform each value
+def transform_container_condition_value(value):
+    if '_' in value:  # If underscore is present in the value
+        words = value.split('_')
+        # Capitalize each word and join them with a space
+        return ' '.join(word.capitalize() for word in words)
+    else:  # If the value is a single word
+        return value.upper()  # Convert the value to uppercase
 

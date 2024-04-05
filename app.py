@@ -1,26 +1,27 @@
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 from datetime import datetime, timedelta
+
+from bs4 import BeautifulSoup
 from streamlit_gsheets import GSheetsConnection
 from streamlit_option_menu import option_menu
-from scraper.scrape import scrap_data, get_countries_codes
+import streamlit.components.v1 as components
+from scraper.scrape import scrap_data
 from scraper.calendar_scraper import get_geopolitical_calendar
 
 from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
     get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, pre_process_trading_data
 from plots import get_market_price_map, container_count_plot, available_for_sale_plot, sold_inventory_plot, \
     monthly_sales_plot, sales_cost_breakdown_plot, inventory_plot, inventory_per_depot, shipping_costs_plot, \
-    container_prices_plot
+    container_prices_plot, inventory_avb_breakdown_plot
 
 st.set_page_config(page_title="Inventory Insights", page_icon="📊", layout="wide")
 
 # Update the GSheets connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 new_conn = st.connection("pricing_data", type=GSheetsConnection)
-
-API_KEY = st.secrets.news_api_key["key"]
-API_ENDPOINT = "https://api.newsfilter.io/search?token={}".format(API_KEY)
 
 # ---------------------------------- Page Styling -------------------------------------
 
@@ -38,33 +39,42 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown(
+    f"""
+    <style>
+    .stPlotlyChart {{
+     outline: 5px solid {'#FFFFFF'};
+     border-radius: 10px;
+     box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.20), 0 6px 20px 0 rgba(0, 0, 0, 0.30);
+    }}
+    </style>
+    """, unsafe_allow_html=True
+)
+
 # ----------------------------------- Data Loading ------------------------------------
 
 with st.sidebar:
     file_upload = st.file_uploader("Upload data file", type=["csv", "xlsx", "xls"], )
 
 df = pd.DataFrame()
-df0 = pd.DataFrame()
 df_trading = pd.DataFrame()
 
 if file_upload is None:
     # Read data directly from Google Sheets
     df = conn.read(worksheet="Data_Sheet")
-    df0 = conn.read(worksheet="Container X")
     df_trading = new_conn.read(worksheet="Trading market price")
 
 else:
     if file_upload.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
         df = pd.read_excel(file_upload, engine="openpyxl", sheet_name="Data_Sheet")
-        df0 = pd.read_excel(file_upload, sheet_name="Container X")
     elif file_upload.type == "application/vnd.ms-excel":  # Check if it's an XLS file
         df = pd.read_excel(file_upload, sheet_name="Data_Sheet")
-        df0 = pd.read_excel(file_upload, sheet_name="Container X")
     elif file_upload.type == "text/csv":  # Check if it's a CSV file
         df = pd.read_csv(file_upload, encoding=("UTF-8"))
 
 # ---------------------- Data Pre-processing --------------------------------------
 df = pre_process_data(df)
+df_trading = pre_process_trading_data(df_trading)
 
 year_list = list(set(df[df["Year"] != 0]["Year"].values))
 year_list.sort()
@@ -185,6 +195,20 @@ if menu == "Sales & Costs":
 
 # ------------------------------ Page 3 -----------------------------------------------
 if menu == "Inventory In vs. Out":
+    inventory_kpis = st.columns(5)
+
+    avb_inv = len(df[df['Status']=='SELL'])
+    sold_inv = len(df[df['Status']=='SOLD'])
+    total_gate_in = df["Gate In"].count()
+    total_gate_out = df["Gate Out"].count()
+    gate_out_in_ratio = total_gate_out / total_gate_in if total_gate_in > 0 else 0
+
+    inventory_kpis[0].metric(label='Available Inventory', value=f'{avb_inv} units')
+    inventory_kpis[1].metric(label='Sold Inventory', value=f'{sold_inv} units')
+    inventory_kpis[2].metric(label='Total Gate-In', value=f'{total_gate_in} items')
+    inventory_kpis[3].metric(label='Total Gate-Out', value=f'{total_gate_out} items')
+    inventory_kpis[4].metric(label='Inventory Turnover Ratio', value=f"{gate_out_in_ratio*100:.1f}%")
+
     # ------------------------ Filters ------------------------------------------------
     location = st.sidebar.multiselect(label="Location",
                                       options=set(df["Location"].dropna().values),
@@ -210,6 +234,15 @@ if menu == "Inventory In vs. Out":
 
     fig = inventory_per_depot(inv_in_out_data)
     charts_row[1].plotly_chart(fig, use_container_width=True)
+
+    # ---------------------------- Inventory Available for Sale ---------------------------
+    row_2 = st.columns((1,4,1))
+    avb_inventory = df[df['Status']=='SELL']
+    fig = inventory_avb_breakdown_plot(avb_inventory)
+
+    row_2[1].plotly_chart(fig, use_container_width=True)
+
+
 # ------------------------------ Page 4 -----------------------------------------------
 if menu == "Sales' Ports":
     data = pd.DataFrame()
@@ -240,76 +273,76 @@ if menu == "Sales' Ports":
     row_1[1].plotly_chart(fig, use_container_width=True)
     st.write("---")
 
-    if len(df0) != 0:
-        df0["WEEK_TO_DISPLAY"] = pd.to_datetime(df0["WEEK_TO_DISPLAY"])
-
-        row_2 = st.columns((1, 4))
-        row_2[0].write("# ")
-        row_2[0].write("# ")
-        container_type = row_2[0].selectbox(label="Container Type",
-                                            options=df0["CONTAINER_TYPE"].unique())
-        container_condition = row_2[0].selectbox(label="Container Type",
-                                                 options=df0["CONTAINER_CONDITION"].unique())
-        selected_data = df0[(df0["CONTAINER_TYPE"] == container_type) &
-                            (df0["CONTAINER_CONDITION"] == container_condition)]
-        df1 = selected_data.groupby(["WEEK_TO_DISPLAY",
-                                     "SALES_LOCATION_NAME"])["MEAN_PRICE_PER_CONTAINER"].mean().reset_index()
-
-        fig = container_prices_plot(df1)
-        row_2[1].plotly_chart(fig, use_container_width=True)
-
 # ------------------------------ Page 5 -----------------------------------------------
-if menu == "Calendar":
-    df = get_geopolitical_calendar()
 
-    # Display the DataFrame as a table
-    styler = df.style.hide_index()
-    st.write(styler.to_html(escape=False), unsafe_allow_html=True)
+if menu == "Trading Prices":
+    row_1 = st.columns((1, 1, 1, 2, 1))
+    container_type = row_1[1].selectbox(label="Container Type",
+                                        options=df_trading["CONTAINER_TYPE"].unique())
+    container_condition = row_1[2].selectbox(label="Container Type",
+                                             options=df_trading["CONTAINER_CONDITION"].unique())
+    selected_range = row_1[3].slider(
+        'Select Date Range:',
+        min_value=df_trading['DATE'].min().to_pydatetime(),
+        max_value=df_trading['DATE'].max().to_pydatetime(),
+        value=(df_trading['DATE'].min().to_pydatetime(), df_trading['DATE'].max().to_pydatetime()),
+        format='MMM YYYY'
+    )
+    selected_start, selected_end = pd.to_datetime(selected_range[0]), pd.to_datetime(selected_range[1])
+
+    # Combine all conditions into a single filter
+    filter_mask = ((df_trading['DATE'] >= selected_start) & (df_trading['DATE'] <= selected_end) &
+                   (df_trading["CONTAINER_TYPE"] == container_type) &
+                   (df_trading["CONTAINER_CONDITION"] == container_condition))
+    # Apply the combined filter to df_trading
+    filtered_data = df_trading[filter_mask]
+
+    row_2 = st.columns(2)
+    fig = container_prices_plot(filtered_data)
+    row_2[0].plotly_chart(fig, use_container_width=True)
+
+    container_count_fig = container_count_plot(filtered_data)
+    row_2[1].plotly_chart(container_count_fig, use_container_width=True)
+
+    row_3 = st.columns((1, 4))
+    row_3[0].write("# ")
+    row_3[0].write("# ")
+    selected_city = row_3[0].selectbox(label="Location", options=df_trading['CITY'].unique())
+
+    filtered_trading_data = df_trading[df_trading['CITY'] == selected_city]
+
+    # temp = filtered_trading_data.groupby(['Month', 'Year'])['MARKET_PRICE_USD'].sum().reset_index()
+    # st.dataframe(temp)
+    heatmap_fig = get_market_price_map(filtered_trading_data)
+
+    row_3[1].plotly_chart(heatmap_fig, use_container_width=True)
 
 # -------------------------------------------------------------------------------------------------------
 
-if menu == "Trading Prices":
-    st.markdown(
-        f"""
-    <style>
-    .stPlotlyChart {{
-     outline: 5px solid {'#FFFFFF'};
-     border-radius: 10px;
-     box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.20), 0 6px 20px 0 rgba(0, 0, 0, 0.30);
-    }}
-    </style>
-    """, unsafe_allow_html=True
-    )
-    df_trading = pre_process_trading_data(df_trading)
+if menu == "Calendar":
+    df = get_geopolitical_calendar()
 
-    outer_cols = st.columns((6, 4))
-    with outer_cols[0]:
-        st.write("###### ")
-        filter_row = st.columns((1, 4, 1))
-        selected_range = filter_row[1].slider(
-            'Select Date Range:',
-            min_value=df_trading['DATE'].min().to_pydatetime(),
-            max_value=df_trading['DATE'].max().to_pydatetime(),
-            value=(df_trading['DATE'].min().to_pydatetime(), df_trading['DATE'].max().to_pydatetime()),
-            format='MMM YYYY'
-        )
-        selected_start, selected_end = pd.to_datetime(selected_range[0]), pd.to_datetime(selected_range[1])
-        filtered_df = df_trading[(df_trading['DATE'] >= selected_start) & (df_trading['DATE'] <= selected_end)]
+    filters_row = st.columns((1,2,2,1))
+    with filters_row[1]:
+        # Extract unique locations for the multiselect filter (assuming the 'Location' column exists)
+        unique_locations = df['Location'].unique().tolist()
+        # Use a multiselect widget for filtering by location
+        selected_locations = st.multiselect('Filter by Location:', options=unique_locations,
+                                            placeholder='All')
+        if len(selected_locations)==0:
+            selected_locations = unique_locations
 
-        container_count_fig = container_count_plot(filtered_df)
-        st.plotly_chart(container_count_fig, use_container_width=True)
+    with filters_row[2]:
+        event_query = st.text_input('Search in Event:', '')
 
-    with outer_cols[1]:
-        filter_row = st.columns(3)
-        st.write("### ")
-        cities = df_trading['CITY'].unique()
-        selected_city = filter_row[0].selectbox(label="Location", options=cities)
-        filtered_trading_data = df_trading[df_trading['CITY'] == selected_city]
+    filtered_df = df[df['Location'].isin(selected_locations)]
+    if event_query:
+        # If there's a query, further filter the DataFrame
+        filtered_df = filtered_df[filtered_df['Event'].str.contains(event_query, case=False, na=False)]
 
-        # temp = filtered_trading_data.groupby(['Month', 'Year'])['MARKET_PRICE_USD'].sum().reset_index()
-        # st.dataframe(temp)
-        heatmap_fig = get_market_price_map(filtered_trading_data)
+    # Display the DataFrame as a table
+    styler = filtered_df.style.hide_index()
+    st.write(styler.to_html(escape=False), unsafe_allow_html=True)
 
-        st.plotly_chart(heatmap_fig, use_container_width=True)
 
 # -------------------------------------------------------------------------------------------------------

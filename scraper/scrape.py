@@ -1,10 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-from geopy.geocoders import Nominatim
-import pycountry
-
-GEOLOCATOR = Nominatim(user_agent="geoapiExercises")
 
 
 def get_webdata(url):
@@ -42,33 +38,10 @@ def preprocess_data(df):
     return df
 
 
-def get_lat_long(country_name):
-    location = GEOLOCATOR.geocode(country_name)
-    if location:
-        return location.latitude, location.longitude
-    return None, None
-
-
-def insert_loc_coordinates(df, col_name):
-    df["Latitude"], df["Longitude"] = zip(*df[col_name].apply(get_lat_long))
-    return df
-
-
 def scrap_data(url):
     soup = get_webdata(url)
     table = get_table(soup, "tablepress-29")
     df = get_table_data(table)
     df = preprocess_data(df)
     return df
-
-
-def get_countries_codes(df, col_name):
-    countries = {}
-    for country in pycountry.countries:
-        countries[country.name] = country.alpha_3
-
-    df["ISO"] = df[col_name].apply(lambda x: countries.get(x, 'Unknown code'))
-
-    return df
-
 
