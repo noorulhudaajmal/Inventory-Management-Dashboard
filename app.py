@@ -3,16 +3,18 @@ import pandas as pd
 import requests
 import streamlit as st
 from datetime import datetime, timedelta
+import streamlit.components.v1 as components
 
 from bs4 import BeautifulSoup
 from streamlit_gsheets import GSheetsConnection
 from streamlit_option_menu import option_menu
-import streamlit.components.v1 as components
+
+from scraper.news_scraper import extract_news
 from scraper.scrape import scrap_data
 from scraper.calendar_scraper import get_geopolitical_calendar
 
 from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
-    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, pre_process_trading_data
+    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, pre_process_trading_data, display_telegram_posts
 from plots import get_market_price_map, container_count_plot, available_for_sale_plot, sold_inventory_plot, \
     monthly_sales_plot, sales_cost_breakdown_plot, inventory_plot, inventory_per_depot, shipping_costs_plot, \
     container_prices_plot, inventory_avb_breakdown_plot
@@ -320,29 +322,36 @@ if menu == "Trading Prices":
 # -------------------------------------------------------------------------------------------------------
 
 if menu == "Calendar":
-    df = get_geopolitical_calendar()
+    news_view = st.columns((2,1))
+    with news_view[0]:
+        df = get_geopolitical_calendar()
 
-    filters_row = st.columns((1,2,2,1))
-    with filters_row[1]:
-        # Extract unique locations for the multiselect filter (assuming the 'Location' column exists)
-        unique_locations = df['Location'].unique().tolist()
-        # Use a multiselect widget for filtering by location
-        selected_locations = st.multiselect('Filter by Location:', options=unique_locations,
-                                            placeholder='All')
-        if len(selected_locations)==0:
-            selected_locations = unique_locations
+        filters_row = st.columns((1,2,2,1))
+        with filters_row[1]:
+            # Extract unique locations for the multiselect filter (assuming the 'Location' column exists)
+            unique_locations = df['Location'].unique().tolist()
+            # Use a multiselect widget for filtering by location
+            selected_locations = st.multiselect('Filter by Location:', options=unique_locations,
+                                                placeholder='All')
+            if len(selected_locations)==0:
+                selected_locations = unique_locations
 
-    with filters_row[2]:
-        event_query = st.text_input('Search in Event:', '')
+        with filters_row[2]:
+            event_query = st.text_input('Search in Event:', '')
 
-    filtered_df = df[df['Location'].isin(selected_locations)]
-    if event_query:
-        # If there's a query, further filter the DataFrame
-        filtered_df = filtered_df[filtered_df['Event'].str.contains(event_query, case=False, na=False)]
+        filtered_df = df[df['Location'].isin(selected_locations)]
+        if event_query:
+            # If there's a query, further filter the DataFrame
+            filtered_df = filtered_df[filtered_df['Event'].str.contains(event_query, case=False, na=False)]
 
-    # Display the DataFrame as a table
-    styler = filtered_df.style.hide_index()
-    st.write(styler.to_html(escape=False), unsafe_allow_html=True)
+        # Display the DataFrame as a table
+        styler = filtered_df.style.hide_index()
+        st.write(styler.to_html(escape=False), unsafe_allow_html=True)
 
-
+    with news_view[1]:
+        st.write("## Port Pulse Updates")
+        df_news = extract_news()
+        df_news = df_news.iloc[::-1].reset_index(drop=True)
+        display_telegram_posts(df_news)
 # -------------------------------------------------------------------------------------------------------
+

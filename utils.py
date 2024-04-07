@@ -3,6 +3,8 @@ import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import streamlit.components.v1 as components
+
 
 
 months_list = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -157,3 +159,17 @@ def transform_container_condition_value(value):
     else:  # If the value is a single word
         return value.upper()  # Convert the value to uppercase
 
+
+
+def display_telegram_posts(df):
+    for index, row in df.iterrows():
+        components.html(f"""
+            <!DOCTYPE html>
+            <html>
+                <div>
+                    <script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="{row['telegram_post_id']}" data-width="100%"></script>
+                </div>
+            </html>
+            """,
+                        height=row['div_height']
+                        )
