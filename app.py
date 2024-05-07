@@ -17,7 +17,8 @@ from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_s
     get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, pre_process_trading_data, display_telegram_posts
 from plots import get_market_price_map, container_count_plot, available_for_sale_plot, sold_inventory_plot, \
     monthly_sales_plot, sales_cost_breakdown_plot, inventory_plot, inventory_per_depot, shipping_costs_plot, \
-    container_prices_plot, inventory_avb_breakdown_plot
+    container_prices_plot, inventory_avb_breakdown_plot, container_prices_wrt_location, \
+    biggest_growth_and_drop_in_prices, prices_variation_chart
 
 st.set_page_config(page_title="Inventory Insights", page_icon="📊", layout="wide")
 
@@ -85,9 +86,9 @@ colors = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#84a59d", "#00
           "#f6bd60", "#90be6d", "#577590", "#e07a5f", "#81b29a", "#f2cc8f", "#0081a7"]
 # ---------------------------------------------------------------------------------
 menu = option_menu(menu_title=None, options=["Overview", "Sales & Costs",
-                                             "Inventory In vs. Out", "Sales' Ports",
+                                             "Inventory In/Out", "Sales' Ports",
                                              "Trading Prices",
-                                             "Calendar"], orientation="horizontal")
+                                             "Calendar", "Port Pulse"], orientation="horizontal")
 
 # --------------------------------- Charts  ---------------------------------------
 if menu == "Overview":
@@ -166,7 +167,6 @@ if menu == "Overview":
     fig = sold_inventory_plot(depot_activity)
     charts_row[1].plotly_chart(fig, use_container_width=True)
 
-
 # ------------------------------ Page 2 -----------------------------------------------
 if menu == "Sales & Costs":
     # ------------------------ Filters ------------------------------------------------
@@ -196,11 +196,11 @@ if menu == "Sales & Costs":
     charts_row[1].plotly_chart(fig, use_container_width=True)
 
 # ------------------------------ Page 3 -----------------------------------------------
-if menu == "Inventory In vs. Out":
+if menu == "Inventory In/Out":
     inventory_kpis = st.columns(5)
 
-    avb_inv = len(df[df['Status']=='SELL'])
-    sold_inv = len(df[df['Status']=='SOLD'])
+    avb_inv = len(df[df['Status'] == 'SELL'])
+    sold_inv = len(df[df['Status'] == 'SOLD'])
     total_gate_in = df["Gate In"].count()
     total_gate_out = df["Gate Out"].count()
     gate_out_in_ratio = total_gate_out / total_gate_in if total_gate_in > 0 else 0
@@ -209,7 +209,7 @@ if menu == "Inventory In vs. Out":
     inventory_kpis[1].metric(label='Sold Inventory', value=f'{sold_inv} units')
     inventory_kpis[2].metric(label='Total Gate-In', value=f'{total_gate_in} items')
     inventory_kpis[3].metric(label='Total Gate-Out', value=f'{total_gate_out} items')
-    inventory_kpis[4].metric(label='Inventory Turnover Ratio', value=f"{gate_out_in_ratio*100:.1f}%")
+    inventory_kpis[4].metric(label='Inventory Turnover Ratio', value=f"{gate_out_in_ratio * 100:.1f}%")
 
     # ------------------------ Filters ------------------------------------------------
     location = st.sidebar.multiselect(label="Location",
@@ -238,12 +238,11 @@ if menu == "Inventory In vs. Out":
     charts_row[1].plotly_chart(fig, use_container_width=True)
 
     # ---------------------------- Inventory Available for Sale ---------------------------
-    row_2 = st.columns((1,4,1))
-    avb_inventory = df[df['Status']=='SELL']
+    row_2 = st.columns((1, 4, 1))
+    avb_inventory = df[df['Status'] == 'SELL']
     fig = inventory_avb_breakdown_plot(avb_inventory)
 
     row_2[1].plotly_chart(fig, use_container_width=True)
-
 
 # ------------------------------ Page 4 -----------------------------------------------
 if menu == "Sales' Ports":
@@ -281,7 +280,7 @@ if menu == "Trading Prices":
     row_1 = st.columns((1, 1, 1, 2, 1))
     container_type = row_1[1].selectbox(label="Container Type",
                                         options=df_trading["CONTAINER_TYPE"].unique())
-    container_condition = row_1[2].selectbox(label="Container Type",
+    container_condition = row_1[2].selectbox(label="Container Condition",
                                              options=df_trading["CONTAINER_CONDITION"].unique())
     selected_range = row_1[3].slider(
         'Select Date Range:',
@@ -319,39 +318,66 @@ if menu == "Trading Prices":
 
     row_3[1].plotly_chart(heatmap_fig, use_container_width=True)
 
+    st.write("---")
+
+    row_0 = st.columns(3)
+    time_range = row_0[1].slider(
+        'Select Date Range:',
+        min_value=df_trading['DATE'].min().to_pydatetime(),
+        max_value=df_trading['DATE'].max().to_pydatetime(),
+        value=(df_trading['DATE'].min().to_pydatetime(), df_trading['DATE'].max().to_pydatetime()),
+        format='MMM YYYY',
+        key="dwwc"
+    )
+    time_start, time_end = pd.to_datetime(time_range[0]), pd.to_datetime(time_range[1])
+
+    # Combine all conditions into a single filter
+    mask = ((df_trading['DATE'] >= time_start) & (df_trading['DATE'] <= time_end))
+    filtered_data_0 = df_trading[mask]
+
+    st.plotly_chart(container_prices_wrt_location(filtered_data_0), use_container_width=True)
+
+    biggest_growth, biggest_drop = biggest_growth_and_drop_in_prices(filtered_data_0)
+
+    table_row = st.columns(2)
+    table_row[0].plotly_chart(prices_variation_chart(data=biggest_growth.head(5),
+                                                     indicator='green',
+                                                     table_title='Locations with biggest Week-on-Week growth'))
+    table_row[1].plotly_chart(prices_variation_chart(data=biggest_drop.head(5),
+                                                     indicator='red',
+                                                     table_title='Locations with biggest Week-on-Week drop'))
+
 # -------------------------------------------------------------------------------------------------------
 
 if menu == "Calendar":
-    news_view = st.columns((2,1))
-    with news_view[0]:
-        df = get_geopolitical_calendar()
+    df = get_geopolitical_calendar()
 
-        filters_row = st.columns((1,2,2,1))
-        with filters_row[1]:
-            # Extract unique locations for the multiselect filter (assuming the 'Location' column exists)
-            unique_locations = df['Location'].unique().tolist()
-            # Use a multiselect widget for filtering by location
-            selected_locations = st.multiselect('Filter by Location:', options=unique_locations,
-                                                placeholder='All')
-            if len(selected_locations)==0:
-                selected_locations = unique_locations
+    filters_row = st.columns((1, 2, 2, 1))
+    with filters_row[1]:
+        # Extract unique locations for the multiselect filter (assuming the 'Location' column exists)
+        unique_locations = df['Location'].unique().tolist()
+        # Use a multiselect widget for filtering by location
+        selected_locations = st.multiselect('Filter by Location:', options=unique_locations,
+                                            placeholder='All')
+        if len(selected_locations) == 0:
+            selected_locations = unique_locations
 
-        with filters_row[2]:
-            event_query = st.text_input('Search in Event:', '')
+    with filters_row[2]:
+        event_query = st.text_input('Search in Event:', '')
 
-        filtered_df = df[df['Location'].isin(selected_locations)]
-        if event_query:
-            # If there's a query, further filter the DataFrame
-            filtered_df = filtered_df[filtered_df['Event'].str.contains(event_query, case=False, na=False)]
+    filtered_df = df[df['Location'].isin(selected_locations)]
+    if event_query:
+        # If there's a query, further filter the DataFrame
+        filtered_df = filtered_df[filtered_df['Event'].str.contains(event_query, case=False, na=False)]
 
-        # Display the DataFrame as a table
-        styler = filtered_df.style.hide_index()
-        st.write(styler.to_html(escape=False), unsafe_allow_html=True)
+    # Display the DataFrame as a table
+    styler = filtered_df.style.hide()
+    st.write(styler.to_html(escape=False), unsafe_allow_html=True)
 
-    with news_view[1]:
-        st.write("## Port Pulse Updates")
-        df_news = extract_news()
-        df_news = df_news.iloc[::-1].reset_index(drop=True)
-        display_telegram_posts(df_news)
+if menu == "Port Pulse":
+    st.write("### Port Pulse Updates")
+    st.write("# ")
+    df_news = extract_news()
+    df_news = df_news.iloc[::-1].reset_index(drop=True)
+    display_telegram_posts(df_news)
 # -------------------------------------------------------------------------------------------------------
-

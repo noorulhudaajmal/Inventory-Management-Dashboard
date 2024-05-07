@@ -67,7 +67,7 @@ def inventory_avb_breakdown_plot(avb_inventory):
             text=filtered_data['Count'],
             marker=dict(color=colors[ind]),
         ))
-        ind+=1
+        ind += 1
 
     # Update the layout
     fig.update_layout(
@@ -83,6 +83,7 @@ def inventory_avb_breakdown_plot(avb_inventory):
     fig = format_hover_layout(fig)
 
     return fig
+
 
 def monthly_sales_plot(data):
     fig = go.Figure()
@@ -279,7 +280,7 @@ def get_market_price_map(data):
     df_agg['MonthNumber'] = df_agg['Month'].map(month_to_number)
     df_agg_sorted = df_agg.sort_values(by=['MonthNumber'])
 
-    heatmap_data = df_agg_sorted.pivot("Month", "Year", "MARKET_PRICE_USD")
+    heatmap_data = df_agg_sorted.pivot(index="Month", columns="Year", values="MARKET_PRICE_USD")
     unique_months = heatmap_data.index.tolist()
     new_index = [month for month in month_order if month in unique_months]
     heatmap_data = heatmap_data.reindex(new_index)
@@ -316,6 +317,89 @@ def get_market_price_map(data):
     return fig
 
 
+def container_prices_wrt_location(data):
+    # Group by city, and sum the container prices
+    data = data.groupby('CITY')['MARKET_PRICE_USD'].sum().reset_index()
+
+    # Sort the data by 'MARKET_PRICE_USD'
+    data = data.sort_values(by='MARKET_PRICE_USD')
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Bar(
+            x=data['MARKET_PRICE_USD'],
+            y=data['CITY'],
+            name='Net Container Price',
+            marker=dict(color='#287271'),
+            hovertemplate='%{y:.0f}',
+            orientation='h'
+        )
+    )
+
+    fig.update_layout(title='Container Prices w.r.t Location',
+                      xaxis_title='Container Price, $', yaxis_title='City')
+    fig = format_hover_layout(fig)
+
+    return fig
+
+
+def biggest_growth_and_drop_in_prices(data):
+    # Group by CITY and DATE, and sum the market prices
+    grouped_data = data.groupby(['CITY', pd.Grouper(key='DATE', freq='W-Mon')])[
+        'MARKET_PRICE_USD'].sum().reset_index()
+
+    # Calculate the week-on-week change
+    grouped_data['Week-on-Week Change'] = grouped_data.groupby('CITY')['MARKET_PRICE_USD'].pct_change()
+
+    # Filter out the first week for each city
+    grouped_data = grouped_data.dropna()
+
+    grouped_data = grouped_data[['CITY', 'MARKET_PRICE_USD', 'Week-on-Week Change']].rename(
+        columns={'CITY': 'City Area', 'MARKET_PRICE_USD': 'Market Price'}
+    )
+    grouped_data['Market Price'] = grouped_data['Market Price'].astype(int)
+
+    # Identify locations with the biggest week-on-week growth and drop
+    biggest_growth = grouped_data.sort_values(by='Week-on-Week Change', ascending=False).drop_duplicates(
+        subset='City Area')
+    biggest_drop = grouped_data.sort_values(by='Week-on-Week Change', ascending=True).drop_duplicates(
+        subset='City Area')
+
+    biggest_growth['Week-on-Week Change'] = biggest_growth['Week-on-Week Change'].apply(
+        lambda x: str(round(x, 2)) + "%")
+    biggest_growth['Market Price'] = biggest_growth['Market Price'].apply(lambda x: '$'+str(x))
+    biggest_drop['Week-on-Week Change'] = biggest_drop['Week-on-Week Change'].apply(lambda x: str(round(x, 2)) + "%")
+    biggest_drop['Market Price'] = biggest_drop['Market Price'].apply(lambda x: '$'+str(x))
+
+    return biggest_growth, biggest_drop
+
+
+def prices_variation_chart(data, indicator, table_title):
+    fig = go.Figure(data=[go.Table(
+        columnwidth=[1, 1, 1],
+        header=dict(
+            values=list(data.columns),
+            font=dict(size=18, color='white', family='ubuntu'),
+            fill_color='#264653',
+            align=['left', 'center'],
+            height=60
+        ),
+        cells=dict(
+            values=[data[K].tolist() for K in data.columns],
+            font=dict(size=12, color='black'),
+            font_size=12,
+            font_color=['black', 'black', indicator],
+            fill_color='#f0efeb',
+            height=40
+        )
+    )]
+    )
+    fig.update_layout(margin=dict(l=30, r=30, b=10, t=80), height=350,
+                      title=table_title)
+    return fig
+
+
 def format_hover_layout(fig):
     fig = fig.update_layout(
         height=400,
@@ -323,4 +407,3 @@ def format_hover_layout(fig):
         hoverlabel=dict(bgcolor="white", font_color="black",
                         font_size=12, font_family="Rockwell"))
     return fig
-
