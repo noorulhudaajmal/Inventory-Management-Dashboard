@@ -339,13 +339,27 @@ if menu == "Trading Prices":
 
     biggest_growth, biggest_drop = biggest_growth_and_drop_in_prices(filtered_data_0)
 
+    st.write("# ")
     table_row = st.columns(2)
-    table_row[0].plotly_chart(prices_variation_chart(data=biggest_growth.head(5),
-                                                     indicator='green',
-                                                     table_title='Locations with biggest Week-on-Week growth'))
-    table_row[1].plotly_chart(prices_variation_chart(data=biggest_drop.head(5),
-                                                     indicator='red',
-                                                     table_title='Locations with biggest Week-on-Week drop'))
+    with table_row[0]:
+        st.write("##### Locations with biggest Week-on-Week growth")
+        # Display the DataFrame as a table
+        styler = biggest_growth.head(5).style.map(lambda x: 'color:green;' if "%" in x else '').hide()
+        st.write(styler.to_html(escape=False), unsafe_allow_html=True)
+    with table_row[1]:
+        st.write("##### Locations with biggest Week-on-Week drop")
+        # Display the DataFrame as a table
+        styler = biggest_drop.head(5).style.map(lambda x: 'color:red;' if "%" in x else '').hide()
+        st.write(styler.to_html(escape=False), unsafe_allow_html=True)
+
+    # table_row[0].plotly_chart(prices_variation_chart(data=biggest_growth.head(5),
+    #                                                  indicator='green',
+    #                                                  table_title='Locations with biggest Week-on-Week growth'))
+    # table_row[1].plotly_chart(prices_variation_chart(data=biggest_drop.head(5),
+    #                                                  indicator='red',
+    #                                                  table_title='Locations with biggest Week-on-Week drop'))
+
+
 
 # -------------------------------------------------------------------------------------------------------
 

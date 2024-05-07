@@ -332,7 +332,7 @@ def container_prices_wrt_location(data):
             y=data['CITY'],
             name='Net Container Price',
             marker=dict(color='#287271'),
-            hovertemplate='%{y:.0f}',
+            hovertemplate='$%{x:.0f}',
             orientation='h'
         )
     )
