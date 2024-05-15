@@ -194,7 +194,8 @@ def shipping_costs_plot(data, size):
 def container_prices_plot(data):
     # Group by month and year, and sum the container counts
     data['MONTH_YEAR'] = data['DATE'].dt.to_period('M')
-    data = data.groupby(['MONTH_YEAR', 'CITY'])['MARKET_PRICE_USD'].sum().reset_index()
+    data = data.groupby(['MONTH_YEAR', 'CITY']).agg({'MARKET_PRICE_USD': "sum",
+                                                     "CONTAINER_COUNT": "sum"}).reset_index()
 
     # Sort the data by 'MONTH_YEAR'
     data = data.sort_values(by='MONTH_YEAR')
@@ -202,7 +203,7 @@ def container_prices_plot(data):
     # Convert 'MONTH_YEAR' to the desired string format for plotting
     data['MONTH_YEAR'] = data['MONTH_YEAR'].dt.strftime('%b %Y')
 
-    fig = go.Figure()
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
     ind = 0
     for loc in data["CITY"].unique():
         filtered_df1 = data[data["CITY"] == loc]
@@ -212,14 +213,28 @@ def container_prices_plot(data):
                 name=loc,
                 marker=dict(color=colors[ind]),
                 hovertemplate='$%{y}'
-            )
+            ),
+            secondary_y=False
         )
         ind += 1
+
+    fig.add_trace(
+        go.Scatter(
+            x=data['MONTH_YEAR'],
+            y=data['CONTAINER_COUNT'],
+            name='Listed Containers #',
+            mode="markers+lines",
+            marker=dict(color='#e9c46a'),
+            hovertemplate='Num of Containers: %{y:.2f}<extra></extra>'
+        ),
+        secondary_y=True
+    )
     fig.update_layout(
-        title='Container Prices w.r.t Location overtime',
+        title='Container Prices & Count overtime',
         xaxis_title='Date',
         yaxis_title="Container Prices",
-        legend_title="Sales Location")
+        legend_title="Sales Location",
+        legend=dict(orientation="h", xanchor='center', x=0.5, y=-0.25))
     fig = format_hover_layout(fig)
     return fig
 

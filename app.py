@@ -299,54 +299,29 @@ if menu == "Trading Prices":
     filtered_data = df_trading[filter_mask]
 
     row_2 = st.columns(2)
-    fig = container_prices_plot(filtered_data)
-    row_2[0].plotly_chart(fig, use_container_width=True)
+    row_2[0].plotly_chart(container_prices_wrt_location(filtered_data), use_container_width=True)
 
     container_count_fig = container_count_plot(filtered_data)
     row_2[1].plotly_chart(container_count_fig, use_container_width=True)
 
-    row_3 = st.columns((1, 4))
-    row_3[0].write("# ")
-    row_3[0].write("# ")
-    selected_city = row_3[0].selectbox(label="Location", options=df_trading['CITY'].unique())
+    st.write("# ")
 
-    filtered_trading_data = df_trading[df_trading['CITY'] == selected_city]
-
-    # temp = filtered_trading_data.groupby(['Month', 'Year'])['MARKET_PRICE_USD'].sum().reset_index()
-    # st.dataframe(temp)
-    heatmap_fig = get_market_price_map(filtered_trading_data)
-
-    row_3[1].plotly_chart(heatmap_fig, use_container_width=True)
-
-    st.write("---")
-
-    row_0 = st.columns(3)
-    time_range = row_0[1].slider(
-        'Select Date Range:',
-        min_value=df_trading['DATE'].min().to_pydatetime(),
-        max_value=df_trading['DATE'].max().to_pydatetime(),
-        value=(df_trading['DATE'].min().to_pydatetime(), df_trading['DATE'].max().to_pydatetime()),
-        format='MMM YYYY',
-        key="dwwc"
-    )
-    time_start, time_end = pd.to_datetime(time_range[0]), pd.to_datetime(time_range[1])
-
-    # Combine all conditions into a single filter
-    mask = ((df_trading['DATE'] >= time_start) & (df_trading['DATE'] <= time_end))
-    filtered_data_0 = df_trading[mask]
-
-    st.plotly_chart(container_prices_wrt_location(filtered_data_0), use_container_width=True)
-
-    biggest_growth, biggest_drop = biggest_growth_and_drop_in_prices(filtered_data_0)
+    row_3 = st.columns(2)
+    selected_city = row_3[0].selectbox(label="Location", options=filtered_data['CITY'].unique())
+    filtered_loc_data = filtered_data[filtered_data['CITY'] == selected_city]
+    row_3[0].plotly_chart(container_prices_plot(filtered_loc_data), use_container_width=True)
+    row_3[1].write("## ")
+    row_3[1].plotly_chart(get_market_price_map(filtered_loc_data), use_container_width=True)
 
     st.write("# ")
-    table_row = st.columns(2)
-    with table_row[0]:
+    row_4 = st.columns(2)
+    biggest_growth, biggest_drop = biggest_growth_and_drop_in_prices(filtered_data)
+    with row_4[0]:
         st.write("##### Locations with biggest Week-on-Week growth")
         # Display the DataFrame as a table
         styler = biggest_growth.head(5).style.applymap(lambda x: 'color:green;' if "%" in x else '').hide()
         st.write(styler.to_html(escape=False), unsafe_allow_html=True)
-    with table_row[1]:
+    with row_4[1]:
         st.write("##### Locations with biggest Week-on-Week drop")
         # Display the DataFrame as a table
         styler = biggest_drop.head(5).style.applymap(lambda x: 'color:red;' if "%" in x else '').hide()
@@ -358,8 +333,6 @@ if menu == "Trading Prices":
     # table_row[1].plotly_chart(prices_variation_chart(data=biggest_drop.head(5),
     #                                                  indicator='red',
     #                                                  table_title='Locations with biggest Week-on-Week drop'))
-
-
 
 # -------------------------------------------------------------------------------------------------------
 
