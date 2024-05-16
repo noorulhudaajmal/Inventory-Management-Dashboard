@@ -2,10 +2,8 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
-from datetime import datetime, timedelta
-import streamlit.components.v1 as components
+import yfinance as yf
 
-from bs4 import BeautifulSoup
 from streamlit_gsheets import GSheetsConnection
 from streamlit_option_menu import option_menu
 
@@ -87,7 +85,7 @@ colors = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#84a59d", "#00
 # ---------------------------------------------------------------------------------
 menu = option_menu(menu_title=None, options=["Overview", "Sales & Costs",
                                              "Inventory In/Out", "Sales' Ports",
-                                             "Trading Prices",
+                                             "Trading Prices", "Commodities",
                                              "Calendar", "Port Pulse"], orientation="horizontal")
 
 # --------------------------------- Charts  ---------------------------------------
@@ -335,6 +333,49 @@ if menu == "Trading Prices":
     #                                                  table_title='Locations with biggest Week-on-Week drop'))
 
 # -------------------------------------------------------------------------------------------------------
+
+if menu == "Commodities":
+    commodities = {
+        "Crude Oil": "CL=F",
+        "Natural Gas": "NG=F",
+        "Brent": "BZ=F",
+        "Gasoline": "RB=F",
+        "Heating Oil": "HO=F",
+        "Coal": "MTF=F",
+        "TTF Gas": "TTF=F",
+        "UK Gas": "UKGAS=F",
+        "Ethanol": "ETH=F",
+        "Naphtha": "NPH=F",
+        "Uranium": "UX=F",
+        "Propane": "PROPANE=F",
+        "Methanol": "MEOH=F",
+        "Urals Oil": "URAL=F"
+    }
+
+    # Initialize an empty list to store the data
+    data_list = []
+
+    st.title("Energy Commodities Data")
+
+    with st.spinner('Fetching data...'):
+        # Fetch the data for each commodity
+        for name, symbol in commodities.items():
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="2d")  # Fetch data for the last two days to calculate changes
+            if len(hist) >= 2:
+                latest_close = hist['Close'].iloc[-1]
+                previous_close = hist['Close'].iloc[-2]
+                point_change = latest_close - previous_close
+                percent_change = (point_change / previous_close) * 100
+                data_list.append([name, latest_close, point_change, percent_change])
+
+        # dataFrame from the collected data
+        df = pd.DataFrame(data_list, columns=["Energy", "Price", "Points Increase/Decrease", "%age Diff"])
+
+    st.success('Data fetched successfully!')
+    styler = df.style.hide()
+    st.write(styler.to_html(escape=False), unsafe_allow_html=True)
+
 
 if menu == "Calendar":
     df = get_geopolitical_calendar()
