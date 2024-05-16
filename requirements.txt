@@ -10,4 +10,5 @@ beautifulsoup4
 geopy
 pycountry
 lxml
+yfinance
 
