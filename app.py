@@ -12,11 +12,14 @@ from scraper.scrape import scrap_data
 from scraper.calendar_scraper import get_geopolitical_calendar
 
 from utils import months_list, pre_process_data, filter_data, get_coi, get_inv_sold, get_inv_under_repair, \
-    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, pre_process_trading_data, display_telegram_posts
+    get_inv_picked, get_gatein_aging, get_dwell_time, format_kpi_value, pre_process_trading_data, \
+    display_telegram_posts, get_commodities_data
 from plots import get_market_price_map, container_count_plot, available_for_sale_plot, sold_inventory_plot, \
     monthly_sales_plot, sales_cost_breakdown_plot, inventory_plot, inventory_per_depot, shipping_costs_plot, \
     container_prices_plot, inventory_avb_breakdown_plot, container_prices_wrt_location, \
     biggest_growth_and_drop_in_prices, prices_variation_chart
+
+from const import Commodities
 
 st.set_page_config(page_title="Inventory Insights", page_icon="📊", layout="wide")
 
@@ -86,7 +89,7 @@ colors = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#84a59d", "#00
 menu = option_menu(menu_title=None, options=["Overview", "Sales & Costs",
                                              "Inventory In/Out", "Sales' Ports",
                                              "Trading Prices", "Commodities",
-                                             "Calendar", "Port Pulse"], orientation="horizontal")
+                                             "Calendar", "News"], orientation="horizontal")
 
 # --------------------------------- Charts  ---------------------------------------
 if menu == "Overview":
@@ -100,6 +103,7 @@ if menu == "Overview":
     year = st.sidebar.selectbox(label="Year", options=year_list, index=2)
 
     # -------------------- Filtered Data -------------------------------------------
+    st.write("# ")
     filtered_df = filter_data(df, location, depot)
     filtered_data = filtered_df.copy()
     filtered_df = filtered_df[filtered_df["Year"] == year]
@@ -150,6 +154,7 @@ if menu == "Overview":
                           value=f"{0} days",
                           delta=f"{percentage_change_dt:.1f}%")
 
+    st.write("# ")
     charts_row = st.columns(2)
     # -------------------------- Depot Activity ---------------------------------------
 
@@ -180,6 +185,7 @@ if menu == "Sales & Costs":
     filtered_data = filter_data(df, location, depot)
     filtered_data = filtered_data[filtered_data["Year"] == year]
 
+    st.write("# ")
     charts_row = st.columns(2)
     # -------------------------- Monthly Sales Scatter Plot ---------------------------
     fig = monthly_sales_plot(filtered_data)
@@ -195,6 +201,7 @@ if menu == "Sales & Costs":
 
 # ------------------------------ Page 3 -----------------------------------------------
 if menu == "Inventory In/Out":
+    st.write("# ")
     inventory_kpis = st.columns(5)
 
     avb_inv = len(df[df['Status'] == 'SELL'])
@@ -220,6 +227,7 @@ if menu == "Inventory In/Out":
     filtered_df = filtered_data[filtered_data["Year"] == year]
     filtered_df['Month'] = pd.Categorical(filtered_df['Month'], categories=months_list, ordered=True)
 
+    st.write("# ")
     charts_row = st.columns(2)
 
     inv_in_out_data = filtered_df.groupby(["Month"])[["Gate In", "Gate Out"]].count().reset_index()
@@ -236,6 +244,7 @@ if menu == "Inventory In/Out":
     charts_row[1].plotly_chart(fig, use_container_width=True)
 
     # ---------------------------- Inventory Available for Sale ---------------------------
+    st.write("# ")
     row_2 = st.columns((1, 4, 1))
     avb_inventory = df[df['Status'] == 'SELL']
     fig = inventory_avb_breakdown_plot(avb_inventory)
@@ -268,6 +277,7 @@ if menu == "Sales' Ports":
     else:
         df = large
 
+    st.write("# ")
     fig = shipping_costs_plot(df, size)
     row_1[1].plotly_chart(fig, use_container_width=True)
     st.write("---")
@@ -335,47 +345,32 @@ if menu == "Trading Prices":
 # -------------------------------------------------------------------------------------------------------
 
 if menu == "Commodities":
-    commodities = {
-        "Crude Oil": "CL=F",
-        "Natural Gas": "NG=F",
-        "Brent": "BZ=F",
-        "Gasoline": "RB=F",
-        "Heating Oil": "HO=F",
-        "Coal": "MTF=F",
-        "TTF Gas": "TTF=F",
-        "UK Gas": "UKGAS=F",
-        "Ethanol": "ETH=F",
-        "Naphtha": "NPH=F",
-        "Uranium": "UX=F",
-        "Propane": "PROPANE=F",
-        "Methanol": "MEOH=F",
-        "Urals Oil": "URAL=F"
-    }
+    for i in Commodities:
+        st.write(f"### {i.name} Commodities Data")
+        with st.spinner('Fetching data...'):
+            df = get_commodities_data(i.name, i.value)
 
-    # Initialize an empty list to store the data
-    data_list = []
+        col_config = {
+            "Trend": st.column_config.AreaChartColumn(
+                "Closing Trend",
+                width="medium",
+                help="The Closing trend for a month",
+            ),
+        }
 
-    st.title("Energy Commodities Data")
+        # Function to apply color to cells
+        def color_cells(val):
+            color = '#81b29a' if val[0] != '-' else '#f07167'
+            return f'background-color: {color}'
 
-    with st.spinner('Fetching data...'):
-        # Fetch the data for each commodity
-        for name, symbol in commodities.items():
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="2d")  # Fetch data for the last two days to calculate changes
-            if len(hist) >= 2:
-                latest_close = hist['Close'].iloc[-1]
-                previous_close = hist['Close'].iloc[-2]
-                point_change = latest_close - previous_close
-                percent_change = (point_change / previous_close) * 100
-                data_list.append([name, latest_close, point_change, percent_change])
 
-        # dataFrame from the collected data
-        df = pd.DataFrame(data_list, columns=["Energy", "Price", "Points Increase/Decrease", "%age Diff"])
-
-    st.success('Data fetched successfully!')
-    styler = df.style.hide()
-    st.write(styler.to_html(escape=False), unsafe_allow_html=True)
-
+        styler = df.style.applymap(color_cells, subset=["%age Diff"])
+        st.data_editor(
+            styler,
+            column_config=col_config,
+            hide_index=True,
+            use_container_width=True
+        )
 
 if menu == "Calendar":
     df = get_geopolitical_calendar()
@@ -402,8 +397,9 @@ if menu == "Calendar":
     styler = filtered_df.style.hide()
     st.write(styler.to_html(escape=False), unsafe_allow_html=True)
 
-if menu == "Port Pulse":
-    st.write("### Port Pulse Updates")
+if menu == "News":
+    header = st.columns((3,1,3))
+    header[1].write("### Port Pulse Updates")
     st.write("# ")
     df_news = extract_news()
     df_news = df_news.iloc[::-1].reset_index(drop=True)

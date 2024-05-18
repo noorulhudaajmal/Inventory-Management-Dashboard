@@ -4,8 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit.components.v1 as components
-
-
+import streamlit as st
+import yfinance as yf
 
 months_list = ['January', 'February', 'March', 'April', 'May', 'June',
                'July', 'August', 'September', 'October', 'November', 'December']
@@ -160,7 +160,6 @@ def transform_container_condition_value(value):
         return value.upper()  # Convert the value to uppercase
 
 
-
 def display_telegram_posts(df):
     for index, row in df.iterrows():
         components.html(f"""
@@ -173,3 +172,79 @@ def display_telegram_posts(df):
             """,
                         height=row['div_height']
                         )
+
+
+@st.cache_data
+def get_commodities_data(ticker_name, commodities):
+    # Initialize an empty list to store the data
+    data_list = []
+
+    # Fetch the data for each commodity
+    for name, symbol in commodities.items():
+        ticker = yf.Ticker(symbol)
+
+        # Fetch data for the last two days to calculate daily changes
+        hist_daily = ticker.history(period="2d")
+        if len(hist_daily) >= 2:
+            latest_close = hist_daily['Close'].iloc[-1]
+            previous_close = hist_daily['Close'].iloc[-2]
+            daily_point_change = latest_close - previous_close
+            daily_percent_change = round((daily_point_change / previous_close) * 100, 2)
+        else:
+            daily_point_change = daily_percent_change = None
+
+        # Fetch data for the last two weeks and resample to weekly frequency to calculate weekly changes
+        hist_weekly = ticker.history(period="1mo")
+        hist_weekly.index = pd.to_datetime(hist_weekly.index)
+        hist_weekly = hist_weekly['Close'].resample('W-FRI').last().dropna()
+        if len(hist_weekly) >= 2:
+            last_week_close = hist_weekly.iloc[-1]
+            prev_week_close = hist_weekly.iloc[-2]
+            weekly_change = round(((last_week_close - prev_week_close) / prev_week_close) * 100, 2)
+        else:
+            weekly_change = None
+
+        # Fetch data for the last two months and resample to monthly frequency to calculate monthly changes
+        hist_monthly = ticker.history(period="1y")
+        hist_monthly.index = pd.to_datetime(hist_monthly.index)
+        hist_monthly = hist_monthly['Close'].resample('M').last().dropna()
+        if len(hist_monthly) >= 2:
+            last_month_close = hist_monthly.iloc[-1]
+            prev_month_close = hist_monthly.iloc[-2]
+            monthly_change = round(((last_month_close - prev_month_close) / prev_month_close) * 100, 2)
+        else:
+            monthly_change = None
+
+        # Fetch data for the last two years and resample to yearly frequency to calculate yearly changes
+        hist_yearly = ticker.history(period="2y")
+        hist_yearly.index = pd.to_datetime(hist_yearly.index)
+        hist_yearly = hist_yearly['Close'].resample('A').last().dropna()
+        if len(hist_yearly) >= 2:
+            last_year_close = hist_yearly.iloc[-1]
+            prev_year_close = hist_yearly.iloc[-2]
+            yearly_change = round(((last_year_close - prev_year_close) / prev_year_close) * 100, 2)
+        else:
+            yearly_change = None
+
+        # Fetch historical data for the trend
+        hist_trend = ticker.history(period="1mo")
+        trend_data = hist_trend['Close'].tolist()
+
+        data_list.append([
+            name, latest_close, daily_point_change, daily_percent_change,
+            weekly_change, monthly_change, yearly_change, trend_data
+        ])
+
+    # DataFrame from the collected data
+    df = pd.DataFrame(data_list, columns=[
+        f"{ticker_name}", "Price", "Daily Change", "%age Diff",
+        "Weekly Change", "Monthly Change", "Yearly Change", "Trend"
+    ])
+    df = df.dropna()
+
+    df["%age Diff"] = df["%age Diff"].apply(lambda x: str(round(x, 3))+"%")
+    df["Weekly Change"] = df["Weekly Change"].apply(lambda x: str(round(x, 3))+"%")
+    df["Monthly Change"] = df["Monthly Change"].apply(lambda x: str(round(x, 3))+"%")
+    df["Yearly Change"] = df["Yearly Change"].apply(lambda x: str(round(x, 3))+"%")
+
+    return df
