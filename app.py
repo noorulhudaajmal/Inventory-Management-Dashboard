@@ -359,18 +359,13 @@ if menu == "Commodities":
         }
 
         # Function to apply color to cells
-        def color_cells(val):
-            color = '#81b29a' if val[0] != '-' else '#f07167'
-            return f'background-color: {color}'
-
-
-        styler = df.style.applymap(color_cells, subset=["%age Diff"])
         st.data_editor(
-            styler,
+            df,
             column_config=col_config,
             hide_index=True,
             use_container_width=True
         )
+
 
 if menu == "Calendar":
     df = get_geopolitical_calendar()
