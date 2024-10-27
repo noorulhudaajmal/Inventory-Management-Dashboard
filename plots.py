@@ -236,6 +236,9 @@ def container_prices_plot(data):
         legend_title="Sales Location",
         legend=dict(orientation="h", xanchor='center', x=0.5, y=-0.25))
     fig = format_hover_layout(fig)
+    fig.update_layout(
+        height=440
+    )
     return fig
 
 

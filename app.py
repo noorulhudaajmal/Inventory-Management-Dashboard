@@ -40,6 +40,15 @@ st.markdown("""
     [data-testid=stMetricContainer] {
         background-color: #708d81;
     }
+    .stMetric {
+       background-color: #cce3de;
+       # border: 1px solid rgba(28, 131, 225, 0.5);
+       padding: 5% 5% 5% 10%;
+       border-radius: 10px;
+       color: rgb(30, 103, 119);
+       overflow-wrap: break-word;
+       # height: 120px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -103,7 +112,7 @@ if menu == "Overview":
     year = st.sidebar.selectbox(label="Year", options=year_list, index=2)
 
     # -------------------- Filtered Data -------------------------------------------
-    st.write("# ")
+    # st.write("# ")
     filtered_df = filter_data(df, location, depot)
     filtered_data = filtered_df.copy()
     filtered_df = filtered_df[filtered_df["Year"] == year]
@@ -154,7 +163,7 @@ if menu == "Overview":
                           value=f"{0} days",
                           delta=f"{percentage_change_dt:.1f}%")
 
-    st.write("# ")
+    # st.write("# ")
     charts_row = st.columns(2)
     # -------------------------- Depot Activity ---------------------------------------
 
@@ -201,7 +210,7 @@ if menu == "Sales & Costs":
 
 # ------------------------------ Page 3 -----------------------------------------------
 if menu == "Inventory In/Out":
-    st.write("# ")
+    # st.write("# ")
     inventory_kpis = st.columns(5)
 
     avb_inv = len(df[df['Status'] == 'SELL'])
@@ -227,7 +236,7 @@ if menu == "Inventory In/Out":
     filtered_df = filtered_data[filtered_data["Year"] == year]
     filtered_df['Month'] = pd.Categorical(filtered_df['Month'], categories=months_list, ordered=True)
 
-    st.write("# ")
+    # st.write("# ")
     charts_row = st.columns(2)
 
     inv_in_out_data = filtered_df.groupby(["Month"])[["Gate In", "Gate Out"]].count().reset_index()
