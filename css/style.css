@@ -18,47 +18,7 @@ html, body, [class*="css"] {
     height: 100vh;
 }
 
-table {
-    width: 100%;
-    margin-top: 1rem;
-    border-collapse: collapse;
-    border-spacing: 0;
-    cell-spacing:0;
-    cell-padding:0;
-}
 
-thead {
-    background-color: #2b3d51;
-    color: #ffffff;
-    height: 5rem;
-    font-size: 1.5rem;
-}
-
-th, td {
-    padding: 15px;
-    border-left: none; /* Remove left border */
-    border-right: none; /* Remove right border */
-    border: 0;
-}
-
-td {
-    background: #f3f3f3;
-    border-collapse:collapse;
-    color: #2b3d51;
-}
-
-tr {
-    border-top: none;
-    border-bottom: none;
-}
-
-th:last-child, td:last-child {
-    border-right: none;
-}
-
-th:first-child, td:first-child {
-    border-left: none;
-}
 
 .main-svg{
     border-radius:5%;

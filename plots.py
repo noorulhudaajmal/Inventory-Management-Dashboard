@@ -1,8 +1,11 @@
 import pandas as pd
+import streamlit as st
 import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+from utils import get_commodities_data
 
 colors = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#84a59d", "#006d77",
           "#f6bd60", "#90be6d", "#577590", "#e07a5f", "#81b29a", "#f2cc8f", "#0081a7"]
@@ -10,6 +13,335 @@ colors = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", "#84a59d", "#00
 months_list = ['January', 'February', 'March', 'April', 'May', 'June',
                'July', 'August', 'September', 'October', 'November', 'December']
 
+
+def get_weekly_data_table(df):
+    for col in df.columns:
+        if "Price" in col:
+            df[col] = df[col].apply(lambda x: f"${x:.2f}")
+    fill_colors =  ["#778da9", "#415a77"] * len(df)
+    fill_colors = ["#2f3e46", "#354f52", "#52796f"] * len(df)
+    fill_colors = fill_colors[:len(df)]
+
+    # Function to determine font color based on value
+    def get_font_color(column_values):
+        return ["#e63946" if val == 0 else "#52b788" for val in column_values]
+
+    ammt_market_price_values = df["AMMT Market Price"].tolist()
+    avg_market_price_values = df["Avg Market Price"].tolist()
+    ammt_market_price_display = [
+        f"🔺 {value}" if value > avg_market_price_values[i] else str(value)
+        for i, value in enumerate(ammt_market_price_values)
+    ]
+
+    # Get font colors for "Real Time" and "On the way" columns
+    real_time_font_color = get_font_color(df["Real Time"])
+    on_the_way_font_color = get_font_color(df["On the way"])
+    fig = go.Figure(data=[go.Table(
+        columnwidth=[2, 2, 2, 2, 2, 2, 2, 2],
+        header=dict(
+            values=["🏷️ Name", "📍 Location", "🔍 Condition", "📏 Size" , "⏳ Real Time", "🚛 On the way", "💰 Avg Market Price", "📈 AMMT Market Price"],
+            fill_color="#1b263b",
+            font=dict(family="ubuntu", color="#adb5bd", size=18, weight="bold"),
+            align="center",
+            line_color="black",
+            height=50,
+            line_width=0,
+        ),
+        cells=dict(
+            values=[
+                df["Name"].tolist(),
+                df["Location"].tolist(),
+                df["Condition"].tolist(),
+                df["Size"].tolist(),
+                df["Real Time"].tolist(),
+                df["On the way"].tolist(),
+                df["Avg Market Price"].tolist(),
+                ammt_market_price_display  # Use the modified "AMMT Market Price" values
+            ],
+            fill_color=[fill_colors * len(df.columns)],
+            font=dict(family="ubuntu", color="#ced4da", size=14, weight="bold"),
+            align="center",
+            height=45,
+            line_width=0,
+            line_color="black"
+        )
+    )])
+
+    fig.update_traces(
+        cells=dict(
+            font=dict(
+                color=[["white"] * len(df)] * (df.columns.get_loc("Real Time")) +  # Default white for columns before "Real Time"
+                      [real_time_font_color] +  # Font color for "Real Time"
+                      [["white"] * len(df)] * (df.columns.get_loc("On the way") - df.columns.get_loc("Real Time") - 1) +  # Default white for columns between "Real Time" and "On the way"
+                      [on_the_way_font_color] +  # Font color for "On the way"
+                      [["white"] * len(df)] * (len(df.columns) - df.columns.get_loc("On the way") - 1)  # Default white for columns after "On the way"
+            )
+        )
+    )
+
+    fig.update_layout(margin=dict(l=10, r=0, t=20, b=20), height=60*(len(df)+2))
+
+    return fig
+
+
+def sales_overtime(data, location, depot):
+    if not location:
+        location = set(data['Location'])
+    if not depot:
+        depot = set(data['Depot'])
+    data = data[(data['Location'].isin(location)) & (data['Depot'].isin(depot))]
+    data['Gate Out'] = pd.to_datetime(data['Gate Out'], errors='coerce')
+    data['Month-Year'] = data['Gate Out'].dt.strftime('%b %y')
+
+    sold_data = data[data['Status'] == 'SOLD']
+    sold_over_time = sold_data.groupby('Month-Year')['Sale Price'].sum().reset_index()
+    sold_over_time['Month-Year'] = pd.to_datetime(sold_over_time['Month-Year'], format='%b %y')
+    sold_over_time = sold_over_time[sold_over_time['Month-Year'] <= datetime.datetime.today()]
+    sold_over_time = sold_over_time.sort_values(by='Month-Year')
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=sold_over_time['Month-Year'],
+        y=sold_over_time['Sale Price'],
+        mode='lines',
+        fill='tozeroy',
+        fillcolor='rgba(0,100,80,0.2)',
+        name='Total Sale Price',
+        line=dict(color='#2a9d8f'),
+        hovertemplate='Total Sales = $%{y:.2f}'
+    ))
+
+    fig.update_layout(
+        title='Sales Over Time',
+        # xaxis_title='Time',
+        yaxis_title='Sale Price',
+    )
+    fig = format_hover_layout(fig)
+
+    return fig
+
+
+def sold_inv_dist(data, location, depot):
+    if not location:
+        location = set(data['Location'])
+    if not depot:
+        depot = set(data['Depot'])
+    data = data[(data['Location'].isin(location)) & (data['Depot'].isin(depot))]
+
+    sold_data = data[data['Status'] == 'SOLD']
+
+    sales_dist = sold_data.groupby('Size')['Unit #'].count().reset_index()
+    sales_dist = sales_dist.sort_values(by='Unit #', ascending=False)
+
+    top_5 = sales_dist.head(5)
+    other = sales_dist.tail(len(sales_dist) - 5).sum()
+    other['Size'] = 'Other'  # Assign 'Other' to the aggregated row
+
+    sales_dist = pd.concat([top_5, other.to_frame().T], ignore_index=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Pie(
+        labels=sales_dist['Size'],
+        values=sales_dist['Unit #'],
+        hole=0.4,
+        textinfo='percent+label',
+        hoverinfo='label+value+percent',
+        hovertemplate='Size: %{label}<br>Total Units: %{value} (%{percent})'
+    ))
+    fig.update_traces(marker=dict(colors=['#006d77', '#83c5be', '#ffddd2', '#e29578', '#fed9b7', '#caf0f8']))
+    fig.update_layout(
+        title='Sales Distribution by Size',
+        showlegend=True
+    )
+
+    fig = format_hover_layout(fig)
+
+    return fig
+
+
+def gate_in_out_distribution(data, location, depot):
+    if not location:
+        location = set(data['Location'])
+    if not depot:
+        depot = set(data['Depot'])
+
+    data = data[(data['Location'].isin(location)) & (data['Depot'].isin(depot))]
+
+    data['Gate In'] = pd.to_datetime(data['Gate In'], errors='coerce')
+    data['Gate Out'] = pd.to_datetime(data['Gate Out'], errors='coerce')
+
+    data['Month-Year In'] = data['Gate In'].dt.strftime('%b %y')
+    data['Month-Year Out'] = data['Gate Out'].dt.strftime('%b %y')
+
+    gate_in_count = data.groupby('Month-Year In').size().reset_index(name='Gate In Count')
+    gate_out_count = data.groupby('Month-Year Out').size().reset_index(name='Gate Out Count')
+
+    merged_counts = pd.merge(gate_in_count, gate_out_count, left_on='Month-Year In', right_on='Month-Year Out', how='outer')
+    merged_counts['Month-Year'] = merged_counts['Month-Year In'].fillna(merged_counts['Month-Year Out'])
+    merged_counts['Month-Year'] = pd.to_datetime(merged_counts['Month-Year'], format='%b %y')
+    merged_counts = merged_counts[merged_counts['Month-Year'] <= datetime.datetime.today()]
+    merged_counts = merged_counts.sort_values(by='Month-Year')
+    # merged_counts = merged_counts.sort_values('Month-Year')
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=merged_counts['Month-Year'],
+        y=merged_counts['Gate In Count'],
+        name='Gate In Count',
+        marker=dict(color='#2a9d8f'),
+    ))
+
+    fig.add_trace(go.Bar(
+        x=merged_counts['Month-Year'],
+        y=merged_counts['Gate Out Count'],
+        name='Gate Out Count',
+        marker=dict(color='#264653')
+    ))
+
+    fig.update_layout(
+        title='Gate In and Gate Out Distribution Over Time',
+        # xaxis_title='Month-Year',
+        yaxis_title='Count',
+        barmode='group'
+    )
+    fig = format_hover_layout(fig)
+
+    return fig
+
+
+
+def top_customers(data, location, depot):
+    if not location:
+        location = set(data['Location'])
+    if not depot:
+        depot = set(data['Depot'])
+
+    data = data[(data['Location'].isin(location)) & (data['Depot'].isin(depot))]
+    customer_counts = data.groupby('Customer').size().reset_index(name='Item Count')
+    top_8_customers = customer_counts.sort_values(by='Item Count', ascending=False).head(8)
+    top_8_customers = top_8_customers.sort_values(by='Item Count', ascending=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=top_8_customers['Customer'],
+        x=top_8_customers['Item Count'],
+        orientation='h',
+        name = 'Customer',
+        hovertemplate='%{y}<br><b>Purchase Freq: %{x}<b>',
+        marker=dict(color='#264653')
+    ))
+
+    fig.update_layout(
+        title='Top Customers',
+        xaxis_title='Customer',
+        yaxis_title='Sales Count',
+    )
+    fig = format_hover_layout(fig)
+
+    return fig
+
+
+
+# ------------------------- Macro ------------------------------------------------------------
+
+def container_prices_and_count(data):
+    data['MONTH_YEAR'] = data['DATE'].dt.to_period('M')
+    data = data.groupby(['MONTH_YEAR', 'CITY']).agg({'MARKET_PRICE_USD': "sum",
+                                                     "CONTAINER_COUNT": "sum"}).reset_index()
+    data = data.sort_values(by='MONTH_YEAR')
+    data['MONTH_YEAR'] = data['MONTH_YEAR'].dt.strftime('%b %Y')
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(
+        go.Bar(
+            x=data["MONTH_YEAR"], y=data["MARKET_PRICE_USD"],
+            name='Price',
+            marker=dict(color=colors[0]),
+            hovertemplate='$%{y}'
+        ),
+        secondary_y=False
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=data['MONTH_YEAR'],
+            y=data['CONTAINER_COUNT'],
+            name='Listed Containers #',
+            mode="markers+lines",
+            marker=dict(color='#e9c46a'),
+            hovertemplate='Num of Containers: %{y:.2f}<extra></extra>'
+        ),
+        secondary_y=True
+    )
+    fig.update_layout(
+        title='Container Prices & Count overtime',
+        xaxis_title='Date',
+        yaxis_title="Container Prices",
+        legend_title="Sales Location",
+        legend=dict(orientation="h", xanchor='center', x=0.5, y=-0.25))
+    fig = format_hover_layout(fig)
+    fig.update_layout(
+        height=440
+    )
+    return fig
+
+
+def commodities_info(commodities):
+    for i in commodities:
+        st.write(f"### {i.name} Commodities Data")
+        with st.spinner('Fetching data...'):
+            df = get_commodities_data(i.name, i.value)
+
+        col_config = {
+            "Trend": st.column_config.AreaChartColumn(
+                "Closing Trend",
+                width="medium",
+                help="The Closing trend for a month",
+            ),
+        }
+        st.data_editor(
+            df,
+            column_config=col_config,
+            hide_index=True,
+            use_container_width=True
+        )
+
+
+def get_wci_chart(df):
+    fill_colors =  ["#eff6e0", "#aec3b0"] * len(df)
+    # fill_colors = ["#2f3e46", "#354f52", "#52796f"] * len(df)
+    fill_colors = fill_colors[:len(df)]
+    df['Annual change (%)'] = df['Annual change (%)'].apply(lambda x: f"🔻{x}" if x.split()[0] == "Down" else f"📈{x}")
+
+    fig = go.Figure(data=[go.Table(
+        columnwidth=[2, 2, 2, 2, 2, 2, 2, 2],
+        header=dict(
+            values=df.columns,
+            fill_color="#124559",
+            font=dict(family="ubuntu", color="white", size=18, weight="bold"),
+            align="center",
+            line_color="black",
+            height=50,
+            line_width=0,
+        ),
+        cells=dict(
+            values=[df[col] for col in df.columns],
+            fill_color=[fill_colors * len(df.columns)],
+            font=dict(family="ubuntu", color="black", size=14, weight="bold"),
+            align="center",
+            height=45,
+            line_width=0,
+            line_color="black"
+        )
+    )])
+
+    fig.update_layout(margin=dict(l=0, r=0, t=10, b=5), height=60*(len(df)))
+
+    return fig
+
+
+# ------------------------- Prev ---------------------------------------------------------------
 
 def available_for_sale_plot(data):
     fig = go.Figure()
@@ -32,11 +364,13 @@ def sold_inventory_plot(data):
     fig = go.Figure()
     i = 0
     for size in data.columns:
-        fig.add_trace(
-            go.Bar(x=data.index, y=data[size], name=size, marker=dict(color=colors[i])))
-        i += 1
+        non_zero_data = data[data[size] > 0]
+        if not non_zero_data.empty:
+            fig.add_trace(
+                go.Bar(x=data.index, y=data[size], name=size, marker=dict(color=colors[i])))
+            i += 1
 
-    fig.update_layout(barmode='group', xaxis_title='Depot', yaxis_title='# Units Sold',
+    fig.update_layout(barmode='stack', xaxis_title='Depot', yaxis_title='# Units Sold',
                       title='SOLD INVENTORY DISTRIBUTION',
                       xaxis={'categoryorder': 'total ascending'},
                       legend_title="Size")

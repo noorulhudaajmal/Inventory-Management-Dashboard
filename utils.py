@@ -1,8 +1,6 @@
 import pandas as pd
 import datetime
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit.components.v1 as components
 import streamlit as st
 import yfinance as yf
@@ -11,7 +9,40 @@ months_list = ['January', 'February', 'March', 'April', 'May', 'June',
                'July', 'August', 'September', 'October', 'November', 'December']
 
 
-def pre_process_data(data: pd.DataFrame):
+
+def load_data(conn, conn_2):
+    data_sheet = conn.read(worksheet="Data_Sheet")
+    data_sheet = preprocess_data(data_sheet[5:])
+
+    weekly_data = conn.read(worksheet="Market pricing", header=2).dropna(how="all").fillna(0)
+
+    location_data = conn.read(worksheet="Settings")
+    location_data['Location Code'] = location_data['Location Code'].apply(
+        lambda x: x[:-1] if x[-1].isdigit() else x
+    )
+    locations_map = location_data.set_index('Location Code')['Location'].to_dict()
+
+    weekly_data["Location Name"] = weekly_data["Location"].map(locations_map)
+    weekly_data = process_week_data(week_data=weekly_data)
+
+    trading_pricing_data = conn_2.read(worksheet="Trading market price")
+    trading_pricing_data['DATE'] = pd.to_datetime(trading_pricing_data['DATE'], errors='coerce')
+    trading_pricing_data['Year'] = trading_pricing_data['DATE'].dt.year
+    trading_pricing_data['Month'] = trading_pricing_data['DATE'].dt.month_name().str[:3]
+
+    return data_sheet, weekly_data, trading_pricing_data
+
+
+def process_week_data(week_data):
+    cols = ["Size.1", "Location", "Condition", "Size", "Real Time", "On the way ",
+            "Avg Market Price ", "AMMT Market Price ", "Location Name"]
+    cols_map = {"Size.1": "Name", "Real Time": "Real Time", "On the way ": "On the way",
+                "Avg Market Price ": "Avg Market Price", "AMMT Market Price ": "AMMT Market Price"}
+    week_data = week_data[cols].rename(columns=cols_map)
+    return week_data
+
+
+def preprocess_data(data: pd.DataFrame):
     data.columns = data.columns.str.strip()
     data = format_datetime_column(data=data, columns=["Gate In", "Gate Out"])
     data = format_price_value(data=data, columns=["Value", "Sale Price", "Repair Cost",
@@ -61,6 +92,52 @@ def extract_year(date):
         return 0
 
 
+def get_filtered_data(df, location, depot, year):
+    filtered_df_prev = df.copy()
+    if location:
+        df = df[df["Location"].isin(location)]
+        filtered_df_prev = filtered_df_prev[filtered_df_prev["Location"].isin(location)]
+    if depot:
+        df = df[df["Depot"].isin(depot)]
+        filtered_df_prev = filtered_df_prev[filtered_df_prev["Depot"].isin(depot)]
+
+    filtered_df = df[df["Year"] == year]
+    filtered_df_prev = filtered_df_prev[
+        (filtered_df_prev["Gate In"] >= (pd.to_datetime(f"{year}-01-01") - pd.DateOffset(years=1))) &
+        (filtered_df_prev["Gate In"] < pd.to_datetime(f"{year}-01-01"))
+        ]
+    return filtered_df, filtered_df_prev
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def pre_process_data(data: pd.DataFrame):
+    data.columns = data.columns.str.strip()
+    data = format_datetime_column(data=data, columns=["Gate In", "Gate Out"])
+    data = format_price_value(data=data, columns=["Value", "Sale Price", "Repair Cost",
+                                                  "Storage Cost", "Purchase Cost"])
+    data["Inventory Aging"] = data["Gate In"].apply(calculate_age_in_days)
+    data["Dwell Time"] = (data["Gate Out"] - data["Gate In"]).dt.days
+    data["Month"] = data["Gate In"].dt.month_name()
+    data["Year"] = data["Gate In"].apply(extract_year)
+    return data
+
+
+
+
+
 def filter_data(data: pd.DataFrame, location, depot):
     filtered_df = data.copy()
     if location:
@@ -71,13 +148,15 @@ def filter_data(data: pd.DataFrame, location, depot):
     return filtered_df
 
 
+
+
 def get_coi(filtered_df: pd.DataFrame,
             filtered_df_prev: pd.DataFrame):
-    cost_of_inventory = filtered_df[filtered_df['Status'] != "SOLD"]['Value'].sum()
+    cost_of_inventory = filtered_df[filtered_df['Status'] != "SOLD"]['Purchase Cost'].sum()
     previous_cost_of_inventory = filtered_df_prev[filtered_df_prev[
                                                       'Status'
                                                   ] != "SOLD"
-                                                  ]['Value'].sum() if not filtered_df_prev.empty else 0
+                                                  ]['Purchase Cost'].sum() if not filtered_df_prev.empty else 0
     percentage_change = ((cost_of_inventory - previous_cost_of_inventory) / previous_cost_of_inventory) \
                         * 100 if previous_cost_of_inventory != 0 else 0
 
@@ -120,8 +199,8 @@ def get_inv_picked(filtered_df: pd.DataFrame,
 
 def get_gatein_aging(filtered_df: pd.DataFrame,
                      filtered_df_prev: pd.DataFrame):
-    gatein_aging = filtered_df['Inventory Aging'].mean()
-    gatein_aging_prev = filtered_df_prev['Inventory Aging'].mean() if not filtered_df_prev.empty else 0
+    gatein_aging = filtered_df['Aging'].mean()
+    gatein_aging_prev = filtered_df_prev['Aging'].mean() if not filtered_df_prev.empty else 0
     percentage_change = ((gatein_aging - gatein_aging_prev) / gatein_aging_prev) \
                         * 100 if gatein_aging_prev != 0 else 0
 
@@ -246,6 +325,9 @@ def commodities_table(df):
     )
     fig.update_layout(margin=dict(l=0, r=10, b=10, t=30), height=500)
     return fig
+
+
+
 # @st.cache_data
 # def get_commodities_data(ticker_name, commodities):
 #     # Initialize an empty list to store the data
